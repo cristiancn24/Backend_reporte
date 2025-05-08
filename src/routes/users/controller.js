@@ -18,37 +18,38 @@ module.exports = function (dbInyected) {
     }
 
    // Versión CORREGIDA del controlador
-   async function login(email, password) {
-    // 1. Buscar usuario por email
-    const user = await db.query('users', { email });
-    if (!user || user.length === 0) {
-        throw new Error('Usuario no encontrado');
-    }
-
-    // 2. Verificar contraseña
-    const storedHash = user[0].password.replace('$2y$', '$2a$');
-    const passwordMatch = await bcrypt.compare(password, storedHash);
-    
-    if (!passwordMatch) {
-        throw new Error('Contraseña incorrecta');
-    }
-
-    // 3. Generar token y devolver datos
-    const token = auth.asignarToken({ 
-        id: user[0].id, 
-        email: user[0].email 
-    });
-
-    return {
-        token,
-        user: {
-            id: user[0].id,
-            email: user[0].email,
-            nombre: user[0].first_name,
-            apellido: user[0].last_name
+    async function login(email, password) {
+        // 1. Buscar usuario por email
+        const user = await db.query('users', { email });
+        if (!user || user.length === 0) {
+            throw new Error('Usuario no encontrado');
         }
-    };
-}
+
+        // 2. Verificar contraseña
+        const storedHash = user[0].password.replace('$2y$', '$2a$');
+        const passwordMatch = await bcrypt.compare(password, storedHash);
+        
+        if (!passwordMatch) {
+            throw new Error('Contraseña incorrecta');
+        }
+
+        // 3. Generar token y devolver datos
+        const token = auth.asignarToken({ 
+            id: user[0].id, 
+            email: user[0].email 
+        });
+
+        return {
+            token,
+            user: {
+                id: user[0].id,
+                email: user[0].email,
+                nombre: user[0].first_name,
+                apellido: user[0].last_name,
+                role_id: user[0].role_id,
+            }
+        };
+    }
 
     async function getSoportesActivos() {
         try {
@@ -76,7 +77,6 @@ module.exports = function (dbInyected) {
             const data = await Promise.all(
                 soportes.map(async (soporte) => {
                     const stats = await db.getTicketsBySoporte(soporte.id, filters);
-                    console.log(`Estadísticas para soporte ${soporte.id}:`, stats);
                     return {
                         ...soporte,
                         ticketsAbiertos: stats.abiertos || 0,

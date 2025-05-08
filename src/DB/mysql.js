@@ -172,8 +172,6 @@ function getTicketsBySoporte(soporteId, filters = {}) {
             params.push(filters.singleDate.toISOString().split('T')[0]);
         }
 
-        console.log('Consulta SQL corregida:', query.replace(/\s+/g, ' '));
-        console.log('Parámetros:', params);
 
         // 3. Ejecución
         connection.query(query, params, (err, results) => {
@@ -190,10 +188,9 @@ function getTicketsBySoporte(soporteId, filters = {}) {
             result.promedio_minutos = result.promedio_minutos !== null ? 
                 Number(result.promedio_minutos) : null;
             
-            console.log('Resultado para soporte', soporteId, ':', result);
             resolve(result);
         });
-    });
+    }); 
 }
 
 async function getEstadisticasSoportes(filters = {}) {
