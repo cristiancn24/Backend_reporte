@@ -4,7 +4,9 @@ const config = require('./config');
 const cors = require('cors');
 
 const users = require('./routes/users/routes.js');
-const tickets = require('./routes/tickets/routes.js');  
+const tickets = require('./routes/tickets/routes.js');
+const userRoutes = require('./routes/userRoutes');  
+const ticketRoutes = require('./routes/ticketRoutes');
 
 const app = express();
 
@@ -17,7 +19,9 @@ app.set('port', config.app.port);
 
 
 //rutas
-app.use('/api/users', users)
-app.use('/api/tickets', tickets)
+app.use('/api/users', userRoutes)
+app.use('/api/tickets', ticketRoutes)
+//app.use('/api/tickets', tickets)
+//app.use('/api/users', users)
 
 module.exports = app;
