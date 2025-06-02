@@ -1,0 +1,754 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client" // Ubicación estándar recomendada
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+  relationMode = "prisma"  
+}
+
+model SequelizeMeta {
+  name String @id @unique(map: "name") @db.VarChar(255)
+}
+
+model brands {
+  id         Int       @id @default(autoincrement()) @db.UnsignedInt
+  name       String    @db.VarChar(255)
+  deleted_at DateTime? @db.Timestamp(0)
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+  models     models[]
+}
+
+model category_products {
+  id         Int        @id @default(autoincrement()) @db.UnsignedInt
+  name       String     @db.VarChar(255)
+  deleted_at DateTime?  @db.Timestamp(0)
+  created_at DateTime?  @db.Timestamp(0)
+  updated_at DateTime?  @db.Timestamp(0)
+  products   products[]
+}
+
+model category_services {
+  id         Int       @id @default(autoincrement()) @db.UnsignedInt
+  name       String    @db.VarChar(255)
+  general    Int       @default(1) @db.UnsignedInt
+  direct     Int       @default(0) @db.UnsignedInt
+  deleted_at DateTime? @db.Timestamp(0)
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+  faqs       faqs[]
+  tickets    tickets[]
+}
+
+model colors {
+  id         Int        @id @default(autoincrement()) @db.UnsignedInt
+  name       String     @db.VarChar(255)
+  deleted_at DateTime?  @db.Timestamp(0)
+  created_at DateTime?  @db.Timestamp(0)
+  updated_at DateTime?  @db.Timestamp(0)
+  products   products[]
+}
+
+model comment_to_users {
+  id                Int             @id @default(autoincrement()) @db.UnsignedInt
+  ticket_comment_id Int             @db.UnsignedInt
+  user_id           Int             @db.UnsignedInt
+  read              Int             @default(0) @db.UnsignedInt
+  deleted_at        DateTime?       @db.Timestamp(0)
+  created_at        DateTime?       @db.Timestamp(0)
+  updated_at        DateTime?       @db.Timestamp(0)
+  ticket_comments   ticket_comments @relation(fields: [ticket_comment_id], references: [id], onUpdate: Restrict, map: "comment_to_users_ticket_comment_id_foreign")
+  users             users           @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "comment_to_users_user_id_foreign")
+
+  @@index([ticket_comment_id], map: "comment_to_users_ticket_comment_id_foreign")
+  @@index([user_id], map: "comment_to_users_user_id_foreign")
+}
+
+model companies {
+  id         Int       @id @default(autoincrement()) @db.UnsignedInt
+  name       String    @db.VarChar(255)
+  address    String    @db.VarChar(255)
+  phone      String    @db.VarChar(255)
+  fax        String    @db.VarChar(255)
+  rnc        String    @db.VarChar(255)
+  deleted_at DateTime? @db.Timestamp(0)
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+}
+
+model configurations {
+  id         Int       @id @default(autoincrement()) @db.UnsignedInt
+  name       String    @db.VarChar(255)
+  value      String    @db.VarChar(255)
+  deleted_at DateTime? @db.Timestamp(0)
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+}
+
+model department_areas {
+  id                                                                                 Int                    @id @default(autoincrement()) @db.UnsignedInt
+  name                                                                               String                 @db.VarChar(255)
+  deleted_at                                                                         DateTime?              @db.Timestamp(0)
+  created_at                                                                         DateTime?              @db.Timestamp(0)
+  updated_at                                                                         DateTime?              @db.Timestamp(0)
+  product_transactions_product_transactions_des_department_area_idTodepartment_areas product_transactions[] @relation("product_transactions_des_department_area_idTodepartment_areas")
+  product_transactions_product_transactions_ori_department_area_idTodepartment_areas product_transactions[] @relation("product_transactions_ori_department_area_idTodepartment_areas")
+}
+
+model department_evaluations {
+  id                                                                                                          Int                                   @id @default(autoincrement()) @db.UnsignedInt
+  name                                                                                                        String                                @default("") @db.VarChar(255)
+  evaluator                                                                                                   department_evaluations_evaluator      @default(NO)
+  central_office                                                                                              department_evaluations_central_office @default(NO)
+  department_id                                                                                               Int                                   @db.UnsignedInt
+  deleted_at                                                                                                  DateTime?                             @db.Timestamp(0)
+  created_at                                                                                                  DateTime?                             @db.Timestamp(0)
+  updated_at                                                                                                  DateTime?                             @db.Timestamp(0)
+  department_satisfaction_forms_department_satisfaction_forms_evaluated_department_idTodepartment_evaluations department_satisfaction_forms[]       @relation("department_satisfaction_forms_evaluated_department_idTodepartment_evaluations")
+  department_satisfaction_forms_department_satisfaction_forms_evaluator_department_idTodepartment_evaluations department_satisfaction_forms[]       @relation("department_satisfaction_forms_evaluator_department_idTodepartment_evaluations")
+}
+
+model department_satisfaction_forms {
+  id                                                                                                   Int                            @id @default(autoincrement()) @db.UnsignedInt
+  evaluated_month                                                                                      DateTime                       @db.Date
+  evaluator_department_id                                                                              Int                            @db.UnsignedInt
+  evaluated_department_id                                                                              Int                            @db.UnsignedInt
+  evaluation_user_id                                                                                   Int                            @default(1) @db.UnsignedInt
+  observation                                                                                          String?                        @db.Text
+  average                                                                                              Decimal?                       @db.Decimal(8, 2)
+  user_id                                                                                              Int                            @db.UnsignedInt
+  cancellation_user_id                                                                                 Int?                           @db.UnsignedInt
+  cancellation_comment                                                                                 String?                        @db.VarChar(255)
+  deleted_at                                                                                           DateTime?                      @db.Timestamp(0)
+  created_at                                                                                           DateTime?                      @db.Timestamp(0)
+  updated_at                                                                                           DateTime?                      @db.Timestamp(0)
+  evaluator_bak                                                                                        Int?
+  users_department_satisfaction_forms_cancellation_user_idTousers                                      users?                         @relation("department_satisfaction_forms_cancellation_user_idTousers", fields: [cancellation_user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "department_satisfaction_forms_cancellation_user_id_foreign")
+  department_evaluations_department_satisfaction_forms_evaluated_department_idTodepartment_evaluations department_evaluations         @relation("department_satisfaction_forms_evaluated_department_idTodepartment_evaluations", fields: [evaluated_department_id], references: [id], onUpdate: Restrict, map: "department_satisfaction_forms_evaluated_department_id_foreign")
+  users_department_satisfaction_forms_evaluation_user_idTousers                                        users                          @relation("department_satisfaction_forms_evaluation_user_idTousers", fields: [evaluation_user_id], references: [id], onUpdate: Restrict, map: "department_satisfaction_forms_evaluation_user_id_foreign")
+  department_evaluations_department_satisfaction_forms_evaluator_department_idTodepartment_evaluations department_evaluations         @relation("department_satisfaction_forms_evaluator_department_idTodepartment_evaluations", fields: [evaluator_department_id], references: [id], onUpdate: Restrict, map: "department_satisfaction_forms_evaluator_department_id_foreign")
+  users_department_satisfaction_forms_user_idTousers                                                   users                          @relation("department_satisfaction_forms_user_idTousers", fields: [user_id], references: [id], onUpdate: Restrict, map: "department_satisfaction_forms_user_id_foreign")
+  det_depto_satisfaction_forms                                                                         det_depto_satisfaction_forms[]
+
+  @@index([cancellation_user_id], map: "department_satisfaction_forms_cancellation_user_id_foreign")
+  @@index([evaluated_department_id], map: "department_satisfaction_forms_evaluated_department_id_foreign")
+  @@index([evaluation_user_id], map: "department_satisfaction_forms_evaluation_user_id_foreign")
+  @@index([evaluator_department_id], map: "department_satisfaction_forms_evaluator_department_id_foreign")
+  @@index([user_id], map: "department_satisfaction_forms_user_id_foreign")
+}
+
+model departments {
+  id                       Int            @id @default(autoincrement()) @db.UnsignedInt
+  name                     String         @db.VarChar(255)
+  responsible_department   String?        @db.VarChar(255)
+  status                   Boolean        @default(true)
+  category_service_general String?        @db.VarChar(255)
+  deleted_at               DateTime?      @db.DateTime(0)
+  created_at               DateTime?      @db.Timestamp(0)
+  updated_at               DateTime?      @db.Timestamp(0)
+  ticket_tasks             ticket_tasks[]
+  tickets                  tickets[]
+  users                    users[]
+}
+
+model det_depto_satisfaction_forms {
+  id                            Int                           @id @default(autoincrement()) @db.UnsignedInt
+  satisfaction_form_id          Int                           @db.UnsignedInt
+  satisfaction_factor_id        Int                           @db.UnsignedInt
+  sub_satisfaction_factor_id    Int                           @db.UnsignedInt
+  value                         Decimal                       @db.Decimal(9, 2)
+  deleted_at                    DateTime?                     @db.Timestamp(0)
+  created_at                    DateTime?                     @db.Timestamp(0)
+  updated_at                    DateTime?                     @db.Timestamp(0)
+  satisfaction_factors          satisfaction_factors          @relation(fields: [satisfaction_factor_id], references: [id], onUpdate: Restrict, map: "det_depto_satisfaction_forms_satisfaction_factor_id_foreign")
+  department_satisfaction_forms department_satisfaction_forms @relation(fields: [satisfaction_form_id], references: [id], onUpdate: Restrict, map: "det_depto_satisfaction_forms_satisfaction_form_id_foreign")
+  sub_satisfaction_factors      sub_satisfaction_factors      @relation(fields: [sub_satisfaction_factor_id], references: [id], onUpdate: Restrict, map: "det_depto_satisfaction_forms_sub_satisfaction_factor_id_foreign")
+
+  @@index([satisfaction_factor_id], map: "det_depto_satisfaction_forms_satisfaction_factor_id_foreign")
+  @@index([satisfaction_form_id], map: "det_depto_satisfaction_forms_satisfaction_form_id_foreign")
+  @@index([sub_satisfaction_factor_id], map: "det_depto_satisfaction_forms_sub_satisfaction_factor_id_foreign")
+}
+
+model expected_results {
+  id           Int            @id @default(autoincrement()) @db.UnsignedInt
+  name         String         @db.VarChar(255)
+  strategic_id Int            @db.UnsignedInt
+  user_id      Int            @db.UnsignedInt
+  deleted_at   DateTime?      @db.Timestamp(0)
+  created_at   DateTime?      @db.Timestamp(0)
+  updated_at   DateTime?      @db.Timestamp(0)
+  strategics   strategics     @relation(fields: [strategic_id], references: [id], onUpdate: Restrict, map: "expected_results_strategic_id_foreign")
+  users        users          @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "expected_results_user_id_foreign")
+  pei_products pei_products[]
+
+  @@index([strategic_id], map: "expected_results_strategic_id_foreign")
+  @@index([user_id], map: "expected_results_user_id_foreign")
+}
+
+model faqs {
+  id                  Int               @id @default(autoincrement()) @db.UnsignedInt
+  subject             String            @db.VarChar(255)
+  description         String            @db.LongText
+  category_service_id Int               @db.UnsignedInt
+  user_id             Int?              @db.UnsignedInt
+  deleted_at          DateTime?         @db.Timestamp(0)
+  created_at          DateTime?         @db.Timestamp(0)
+  updated_at          DateTime?         @db.Timestamp(0)
+  category_services   category_services @relation(fields: [category_service_id], references: [id], onUpdate: Restrict, map: "faqs_category_service_id_foreign")
+  users               users?            @relation(fields: [user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "faqs_user_id_foreign")
+
+  @@index([category_service_id], map: "faqs_category_service_id_foreign")
+  @@index([user_id], map: "faqs_user_id_foreign")
+}
+
+model functional_areas {
+  id                 Int                  @id @default(autoincrement()) @db.UnsignedInt
+  name               String               @db.VarChar(255)
+  user_id            Int                  @db.UnsignedInt
+  deleted_at         DateTime?            @db.Timestamp(0)
+  created_at         DateTime?            @db.Timestamp(0)
+  updated_at         DateTime?            @db.Timestamp(0)
+  users              users                @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "functional_areas_user_id_foreign")
+  registration_forms registration_forms[]
+
+  @@index([user_id], map: "functional_areas_user_id_foreign")
+}
+
+model indicators {
+  id                Int              @id @default(autoincrement()) @db.UnsignedInt
+  name              String           @db.VarChar(255)
+  verification_way  String           @db.VarChar(255)
+  responsability_id Int              @db.UnsignedInt
+  pei_product_id    Int              @db.UnsignedInt
+  user_id           Int              @db.UnsignedInt
+  deleted_at        DateTime?        @db.Timestamp(0)
+  created_at        DateTime?        @db.Timestamp(0)
+  updated_at        DateTime?        @db.Timestamp(0)
+  pei_products      pei_products     @relation(fields: [pei_product_id], references: [id], onUpdate: Restrict, map: "indicators_pei_product_id_foreign")
+  responsabilities  responsabilities @relation(fields: [responsability_id], references: [id], onUpdate: Restrict, map: "indicators_responsability_id_foreign")
+  users             users            @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "indicators_user_id_foreign")
+
+  @@index([pei_product_id], map: "indicators_pei_product_id_foreign")
+  @@index([responsability_id], map: "indicators_responsability_id_foreign")
+  @@index([user_id], map: "indicators_user_id_foreign")
+}
+
+model involved_users {
+  ticket_id  Int       @db.UnsignedInt
+  user_id    Int       @db.UnsignedInt
+  deleted_at DateTime? @db.Timestamp(0)
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+  tickets    tickets   @relation(fields: [ticket_id], references: [id], onUpdate: Restrict, map: "involved_users_ticket_id_foreign")
+  users      users     @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "involved_users_user_id_foreign")
+
+  @@id([ticket_id, user_id])
+  @@index([user_id], map: "involved_users_user_id_foreign")
+}
+
+model migrations {
+  id        Int    @id @default(autoincrement()) @db.UnsignedInt
+  migration String @db.VarChar(255)
+  batch     Int
+}
+
+model models {
+  id         Int        @id @default(autoincrement()) @db.UnsignedInt
+  name       String     @db.VarChar(255)
+  brand_id   Int        @db.UnsignedInt
+  deleted_at DateTime?  @db.Timestamp(0)
+  created_at DateTime?  @db.Timestamp(0)
+  updated_at DateTime?  @db.Timestamp(0)
+  brands     brands     @relation(fields: [brand_id], references: [id], onUpdate: Restrict, map: "models_brand_id_foreign")
+  products   products[]
+
+  @@index([brand_id], map: "models_brand_id_foreign")
+}
+
+model offices {
+  id                                                               Int                    @id @default(autoincrement()) @db.UnsignedInt
+  name                                                             String                 @db.VarChar(255)
+  status                                                           Boolean                @default(true)
+  deleted_at                                                       DateTime?              @db.DateTime(0)
+  created_at                                                       DateTime               @db.DateTime(0)
+  updated_at                                                       DateTime               @db.DateTime(0)
+  product_transactions_product_transactions_des_office_idTooffices product_transactions[] @relation("product_transactions_des_office_idTooffices")
+  product_transactions_product_transactions_ori_office_idTooffices product_transactions[] @relation("product_transactions_ori_office_idTooffices")
+  tickets_tickets_office_idTooffices                               tickets[]              @relation("tickets_office_idTooffices")
+  tickets_tickets_office_support_toTooffices                       tickets[]              @relation("tickets_office_support_toTooffices")
+  users                                                            users[]
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model password_resets {
+  email      String    @db.VarChar(255)
+  token      String    @db.VarChar(255)
+  created_at DateTime? @db.Timestamp(0)
+
+  @@index([email], map: "password_resets_email_index")
+  @@index([token], map: "password_resets_token_index")
+  @@ignore
+}
+
+model pei_products {
+  id                 Int              @id @default(autoincrement()) @db.UnsignedInt
+  name               String           @db.VarChar(255)
+  expected_result_id Int              @db.UnsignedInt
+  user_id            Int              @db.UnsignedInt
+  deleted_at         DateTime?        @db.Timestamp(0)
+  created_at         DateTime?        @db.Timestamp(0)
+  updated_at         DateTime?        @db.Timestamp(0)
+  indicators         indicators[]
+  expected_results   expected_results @relation(fields: [expected_result_id], references: [id], onUpdate: Restrict, map: "pei_products_expected_result_id_foreign")
+  users              users            @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "pei_products_user_id_foreign")
+
+  @@index([expected_result_id], map: "pei_products_expected_result_id_foreign")
+  @@index([user_id], map: "pei_products_user_id_foreign")
+}
+
+model peis {
+  id                 Int       @id @default(autoincrement()) @db.UnsignedInt
+  functional_area    String    @db.VarChar(255)
+  strategic_axis     String    @db.VarChar(255)
+  strategic_objetive String    @db.VarChar(255)
+  user_id            Int?      @db.UnsignedInt
+  deleted_at         DateTime? @db.Timestamp(0)
+  created_at         DateTime? @db.Timestamp(0)
+  updated_at         DateTime? @db.Timestamp(0)
+  users              users?    @relation(fields: [user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "peis_user_id_foreign")
+
+  @@index([user_id], map: "peis_user_id_foreign")
+}
+
+model permission_role {
+  role_id       Int         @db.UnsignedInt
+  permission_id Int         @db.UnsignedInt
+  permissions   permissions @relation(fields: [permission_id], references: [id], onUpdate: Restrict, map: "permission_role_permission_id_foreign")
+  roles         roles       @relation(fields: [role_id], references: [id], onUpdate: Restrict, map: "permission_role_role_id_foreign")
+
+  @@id([permission_id, role_id])
+  @@index([role_id], map: "permission_role_role_id_foreign")
+}
+
+model permissions {
+  id              Int                @id @default(autoincrement()) @db.UnsignedInt
+  name            String?            @db.VarChar(255)
+  description     String             @db.VarChar(255)
+  status          permissions_status @default(Pendiente)
+  deleted_at      DateTime?          @db.Timestamp(0)
+  created_at      DateTime?          @db.Timestamp(0)
+  updated_at      DateTime?          @db.Timestamp(0)
+  permission_role permission_role[]
+}
+
+model product_transaction_details {
+  id                     Int                  @id @default(autoincrement()) @db.UnsignedInt
+  product_transaction_id Int                  @db.UnsignedInt
+  product_id             Int                  @db.UnsignedInt
+  deleted_at             DateTime?            @db.Timestamp(0)
+  created_at             DateTime?            @db.Timestamp(0)
+  updated_at             DateTime?            @db.Timestamp(0)
+  products               products             @relation(fields: [product_id], references: [id], onUpdate: Restrict, map: "product_transaction_details_product_id_foreign")
+  product_transactions   product_transactions @relation(fields: [product_transaction_id], references: [id], onUpdate: Restrict, map: "product_transaction_details_product_transaction_id_foreign")
+
+  @@index([product_id], map: "product_transaction_details_product_id_foreign")
+  @@index([product_transaction_id], map: "product_transaction_details_product_transaction_id_foreign")
+}
+
+model product_transactions {
+  id                                                                             Int                           @id @default(autoincrement()) @db.UnsignedInt
+  ori_office_id                                                                  Int                           @db.UnsignedInt
+  ori_department_area_id                                                         Int                           @db.UnsignedInt
+  des_office_id                                                                  Int                           @db.UnsignedInt
+  des_department_area_id                                                         Int                           @db.UnsignedInt
+  reason_id                                                                      Int                           @db.UnsignedInt
+  comment                                                                        String?                       @db.Text
+  user_id                                                                        Int                           @db.UnsignedInt
+  deleted_at                                                                     DateTime?                     @db.Timestamp(0)
+  created_at                                                                     DateTime?                     @db.Timestamp(0)
+  updated_at                                                                     DateTime?                     @db.Timestamp(0)
+  product_transaction_details                                                    product_transaction_details[]
+  department_areas_product_transactions_des_department_area_idTodepartment_areas department_areas              @relation("product_transactions_des_department_area_idTodepartment_areas", fields: [des_department_area_id], references: [id], onUpdate: Restrict, map: "product_transactions_des_department_area_id_foreign")
+  offices_product_transactions_des_office_idTooffices                            offices                       @relation("product_transactions_des_office_idTooffices", fields: [des_office_id], references: [id], onUpdate: Restrict, map: "product_transactions_des_office_id_foreign")
+  department_areas_product_transactions_ori_department_area_idTodepartment_areas department_areas              @relation("product_transactions_ori_department_area_idTodepartment_areas", fields: [ori_department_area_id], references: [id], onUpdate: Restrict, map: "product_transactions_ori_department_area_id_foreign")
+  offices_product_transactions_ori_office_idTooffices                            offices                       @relation("product_transactions_ori_office_idTooffices", fields: [ori_office_id], references: [id], onUpdate: Restrict, map: "product_transactions_ori_office_id_foreign")
+  reasons                                                                        reasons                       @relation(fields: [reason_id], references: [id], onUpdate: Restrict, map: "product_transactions_reason_id_foreign")
+  users                                                                          users                         @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "product_transactions_user_id_foreign")
+
+  @@index([des_department_area_id], map: "product_transactions_des_department_area_id_foreign")
+  @@index([des_office_id], map: "product_transactions_des_office_id_foreign")
+  @@index([ori_department_area_id], map: "product_transactions_ori_department_area_id_foreign")
+  @@index([ori_office_id], map: "product_transactions_ori_office_id_foreign")
+  @@index([reason_id], map: "product_transactions_reason_id_foreign")
+  @@index([user_id], map: "product_transactions_user_id_foreign")
+}
+
+model products {
+  id                          Int                           @id @default(autoincrement()) @db.UnsignedInt
+  code_dgp                    Int                           @db.UnsignedInt
+  code_bn                     Int                           @db.UnsignedInt
+  name                        String                        @db.VarChar(255)
+  category_product_id         Int                           @db.UnsignedInt
+  model_id                    Int                           @db.UnsignedInt
+  serial                      String                        @db.VarChar(255)
+  color_id                    Int                           @db.UnsignedInt
+  status                      products_status               @default(Disponible)
+  user_id                     Int                           @db.UnsignedInt
+  deleted_at                  DateTime?                     @db.Timestamp(0)
+  created_at                  DateTime?                     @db.Timestamp(0)
+  updated_at                  DateTime?                     @db.Timestamp(0)
+  product_transaction_details product_transaction_details[]
+  category_products           category_products             @relation(fields: [category_product_id], references: [id], onUpdate: Restrict, map: "products_category_product_id_foreign")
+  colors                      colors                        @relation(fields: [color_id], references: [id], onUpdate: Restrict, map: "products_color_id_foreign")
+  models                      models                        @relation(fields: [model_id], references: [id], onUpdate: Restrict, map: "products_model_id_foreign")
+  users                       users                         @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "products_user_id_foreign")
+
+  @@index([category_product_id], map: "products_category_product_id_foreign")
+  @@index([color_id], map: "products_color_id_foreign")
+  @@index([model_id], map: "products_model_id_foreign")
+  @@index([user_id], map: "products_user_id_foreign")
+}
+
+model reasons {
+  id                   Int                    @id @default(autoincrement()) @db.UnsignedInt
+  name                 String                 @db.VarChar(255)
+  deleted_at           DateTime?              @db.Timestamp(0)
+  created_at           DateTime?              @db.Timestamp(0)
+  updated_at           DateTime?              @db.Timestamp(0)
+  product_transactions product_transactions[]
+}
+
+model registration_forms {
+  id                     Int                  @id @default(autoincrement()) @db.UnsignedInt
+  functional_area_id     Int                  @db.UnsignedInt
+  strategic_axe_id       Int                  @db.UnsignedInt
+  strategic_objective_id Int                  @db.UnsignedInt
+  user_id                Int?                 @db.UnsignedInt
+  deleted_at             DateTime?            @db.Timestamp(0)
+  created_at             DateTime?            @db.Timestamp(0)
+  updated_at             DateTime?            @db.Timestamp(0)
+  functional_areas       functional_areas     @relation(fields: [functional_area_id], references: [id], onUpdate: Restrict, map: "registration_forms_functional_area_id_foreign")
+  strategic_axes         strategic_axes       @relation(fields: [strategic_axe_id], references: [id], onUpdate: Restrict, map: "registration_forms_strategic_axe_id_foreign")
+  strategic_objectives   strategic_objectives @relation(fields: [strategic_objective_id], references: [id], onUpdate: Restrict, map: "registration_forms_strategic_objective_id_foreign")
+  users                  users?               @relation(fields: [user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "registration_forms_user_id_foreign")
+  strategics             strategics[]
+
+  @@index([functional_area_id], map: "registration_forms_functional_area_id_foreign")
+  @@index([strategic_axe_id], map: "registration_forms_strategic_axe_id_foreign")
+  @@index([strategic_objective_id], map: "registration_forms_strategic_objective_id_foreign")
+  @@index([user_id], map: "registration_forms_user_id_foreign")
+}
+
+model responsabilities {
+  id         Int          @id @default(autoincrement()) @db.UnsignedInt
+  name       String       @db.VarChar(255)
+  deleted_at DateTime?    @db.Timestamp(0)
+  created_at DateTime?    @db.Timestamp(0)
+  updated_at DateTime?    @db.Timestamp(0)
+  indicators indicators[]
+}
+
+model role_user {
+  role_id    Int       @db.UnsignedInt
+  user_id    Int       @db.UnsignedInt
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+  roles      roles     @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "role_user_role_id_foreign")
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "role_user_user_id_foreign")
+
+  @@id([role_id, user_id])
+  @@index([role_id], map: "role_user_role_id_index")
+  @@index([user_id], map: "role_user_user_id_index")
+}
+
+model roles {
+  id              Int               @id @default(autoincrement()) @db.UnsignedInt
+  name            String            @unique(map: "roles_name_unique") @db.VarChar(255)
+  status          Boolean?          @default(true)
+  access_name     String?           @unique(map: "roles_access_name_unique") @db.VarChar(255)
+  deleted_at      DateTime?         @db.DateTime(0)
+  created_at      DateTime          @db.DateTime(0)
+  updated_at      DateTime          @db.DateTime(0)
+  permission_role permission_role[]
+  role_user       role_user[]
+  users           users[]
+}
+
+model satisfaction_factors {
+  id                           Int                            @id @default(autoincrement()) @db.UnsignedInt
+  name                         String                         @db.VarChar(255)
+  deleted_at                   DateTime?                      @db.Timestamp(0)
+  created_at                   DateTime?                      @db.Timestamp(0)
+  updated_at                   DateTime?                      @db.Timestamp(0)
+  det_depto_satisfaction_forms det_depto_satisfaction_forms[]
+  sub_satisfaction_factors     sub_satisfaction_factors[]
+}
+
+model strategic_axes {
+  id                   Int                    @id @default(autoincrement()) @db.UnsignedInt
+  name                 String                 @db.VarChar(255)
+  user_id              Int                    @db.UnsignedInt
+  deleted_at           DateTime?              @db.Timestamp(0)
+  created_at           DateTime?              @db.Timestamp(0)
+  updated_at           DateTime?              @db.Timestamp(0)
+  registration_forms   registration_forms[]
+  users                users                  @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "strategic_axes_user_id_foreign")
+  strategic_objectives strategic_objectives[]
+
+  @@index([user_id], map: "strategic_axes_user_id_foreign")
+}
+
+model strategic_objectives {
+  id                 Int                  @id @default(autoincrement()) @db.UnsignedInt
+  name               String               @db.VarChar(255)
+  strategic_axe_id   Int                  @db.UnsignedInt
+  user_id            Int                  @db.UnsignedInt
+  deleted_at         DateTime?            @db.Timestamp(0)
+  created_at         DateTime?            @db.Timestamp(0)
+  updated_at         DateTime?            @db.Timestamp(0)
+  registration_forms registration_forms[]
+  strategic_axes     strategic_axes       @relation(fields: [strategic_axe_id], references: [id], onUpdate: Restrict, map: "strategic_objectives_strategic_axe_id_foreign")
+  users              users                @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "strategic_objectives_user_id_foreign")
+
+  @@index([strategic_axe_id], map: "strategic_objectives_strategic_axe_id_foreign")
+  @@index([user_id], map: "strategic_objectives_user_id_foreign")
+}
+
+model strategics {
+  id                   Int                @id @default(autoincrement()) @db.UnsignedInt
+  name                 String             @db.VarChar(255)
+  registration_form_id Int                @db.UnsignedInt
+  user_id              Int                @db.UnsignedInt
+  deleted_at           DateTime?          @db.Timestamp(0)
+  created_at           DateTime?          @db.Timestamp(0)
+  updated_at           DateTime?          @db.Timestamp(0)
+  expected_results     expected_results[]
+  registration_forms   registration_forms @relation(fields: [registration_form_id], references: [id], onUpdate: Restrict, map: "strategics_registration_form_id_foreign")
+  users                users              @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "strategics_user_id_foreign")
+
+  @@index([registration_form_id], map: "strategics_registration_form_id_foreign")
+  @@index([user_id], map: "strategics_user_id_foreign")
+}
+
+model sub_satisfaction_factors {
+  id                           Int                            @id @default(autoincrement()) @db.UnsignedInt
+  name                         String                         @db.VarChar(255)
+  satisfaction_factor_id       Int                            @db.UnsignedInt
+  deleted_at                   DateTime?                      @db.Timestamp(0)
+  created_at                   DateTime?                      @db.Timestamp(0)
+  updated_at                   DateTime?                      @db.Timestamp(0)
+  det_depto_satisfaction_forms det_depto_satisfaction_forms[]
+  satisfaction_factors         satisfaction_factors           @relation(fields: [satisfaction_factor_id], references: [id], onUpdate: Restrict, map: "sub_satisfaction_factors_satisfaction_factor_id_foreign")
+
+  @@index([satisfaction_factor_id], map: "sub_satisfaction_factors_satisfaction_factor_id_foreign")
+}
+
+model ticket_comments {
+  id               Int                @id @default(autoincrement()) @db.UnsignedInt
+  ticket_id        Int                @db.UnsignedInt
+  comment          String             @db.Text
+  user_id          Int                @db.UnsignedInt
+  deleted_at       DateTime?          @db.Timestamp(0)
+  created_at       DateTime?          @db.Timestamp(0)
+  updated_at       DateTime?          @db.Timestamp(0)
+  comment_to_users comment_to_users[]
+  tickets          tickets            @relation(fields: [ticket_id], references: [id], onUpdate: Restrict, map: "ticket_comments_ticket_id_foreign")
+  users            users              @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "ticket_comments_user_id_foreign")
+
+  @@index([ticket_id], map: "ticket_comments_ticket_id_foreign")
+  @@index([user_id], map: "ticket_comments_user_id_foreign")
+}
+
+model ticket_histories {
+  id            Int           @id @default(autoincrement()) @db.UnsignedInt
+  ticket_id     Int           @db.UnsignedInt
+  status_id     Int           @default(1) @db.UnsignedInt
+  user_id       Int           @db.UnsignedInt
+  comment       String?       @db.Text
+  deleted_at    DateTime?     @db.Timestamp(0)
+  created_at    DateTime?     @db.Timestamp(0)
+  updated_at    DateTime?     @db.Timestamp(0)
+  ticket_status ticket_status @relation(fields: [status_id], references: [id], onUpdate: Restrict, map: "ticket_histories_status_id_foreign")
+  tickets       tickets       @relation(fields: [ticket_id], references: [id], onUpdate: Restrict, map: "ticket_histories_ticket_id_foreign")
+  users         users         @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "ticket_histories_user_id_foreign")
+
+  @@index([status_id], map: "ticket_histories_status_id_foreign")
+  @@index([ticket_id], map: "ticket_histories_ticket_id_foreign")
+  @@index([user_id], map: "ticket_histories_user_id_foreign")
+}
+
+model ticket_status {
+  id               Int                @id @default(autoincrement()) @db.UnsignedInt
+  name             String             @db.VarChar(255)
+  deleted_at       DateTime?          @db.Timestamp(0)
+  created_at       DateTime?          @db.Timestamp(0)
+  updated_at       DateTime?          @db.Timestamp(0)
+  ticket_histories ticket_histories[]
+  tickets          tickets[]
+}
+
+model ticket_tasks {
+  id                                         Int                    @id @default(autoincrement()) @db.UnsignedInt
+  ticket_id                                  Int                    @db.UnsignedInt
+  description                                String                 @db.Text
+  assigned_user_id                           Int                    @db.UnsignedInt
+  status_id                                  ticket_tasks_status_id @default(Pendiente)
+  department_id                              Int                    @db.UnsignedInt
+  user_id                                    Int                    @db.UnsignedInt
+  comment                                    String?                @db.VarChar(255)
+  deleted_at                                 DateTime?              @db.Timestamp(0)
+  created_at                                 DateTime?              @db.Timestamp(0)
+  updated_at                                 DateTime?              @db.Timestamp(0)
+  users_ticket_tasks_assigned_user_idTousers users                  @relation("ticket_tasks_assigned_user_idTousers", fields: [assigned_user_id], references: [id], onUpdate: Restrict, map: "ticket_tasks_assigned_user_id_foreign")
+  departments                                departments            @relation(fields: [department_id], references: [id], onUpdate: Restrict, map: "ticket_tasks_department_id_foreign")
+  tickets                                    tickets                @relation(fields: [ticket_id], references: [id], onUpdate: Restrict, map: "ticket_tasks_ticket_id_foreign")
+  users_ticket_tasks_user_idTousers          users                  @relation("ticket_tasks_user_idTousers", fields: [user_id], references: [id], onUpdate: Restrict, map: "ticket_tasks_user_id_foreign")
+
+  @@index([assigned_user_id], map: "ticket_tasks_assigned_user_id_foreign")
+  @@index([department_id], map: "ticket_tasks_department_id_foreign")
+  @@index([ticket_id], map: "ticket_tasks_ticket_id_foreign")
+  @@index([user_id], map: "ticket_tasks_user_id_foreign")
+}
+
+model ticket_uploads {
+  id            Int       @id @default(autoincrement()) @db.UnsignedInt
+  ticket_id     Int       @db.UnsignedInt
+  original_name String    @db.VarChar(255)
+  file          String    @db.VarChar(255)
+  path          String    @db.VarChar(255)
+  deleted_at    DateTime? @db.Timestamp(0)
+  created_at    DateTime? @db.Timestamp(0)
+  updated_at    DateTime? @db.Timestamp(0)
+  tickets       tickets   @relation(fields: [ticket_id], references: [id], onUpdate: Restrict, map: "ticket_uploads_ticket_id_foreign")
+
+  @@index([ticket_id], map: "ticket_uploads_ticket_id_foreign")
+}
+
+model tickets {
+  id                                         Int                @id @default(autoincrement()) @db.UnsignedInt
+  subject                                    String             @db.VarChar(255)
+  comment                                    String             @db.Text
+  category_service_id                        Int?               @db.UnsignedInt
+  user_id                                    Int?               @db.UnsignedInt
+  status_id                                  Int                @default(1) @db.UnsignedInt
+  department_id                              Int                @db.UnsignedInt
+  priority                                   tickets_priority?
+  validated                                  Int?               @db.UnsignedInt
+  office_support_to                          Int                @default(1) @db.UnsignedInt
+  assigned_user_id                           Int?               @db.UnsignedInt
+  office_id                                  Int?               @db.UnsignedInt
+  deleted_at                                 DateTime?          @db.Timestamp(0)
+  created_at                                 DateTime?          @db.Timestamp(0)
+  updated_at                                 DateTime?          @db.Timestamp(0)
+  involved_users                             involved_users[]
+  ticket_comments                            ticket_comments[]
+  ticket_histories                           ticket_histories[]
+  ticket_tasks                               ticket_tasks[]
+  ticket_uploads                             ticket_uploads[]
+  users_tickets_assigned_user_idTousers      users?             @relation("tickets_assigned_user_idTousers", fields: [assigned_user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "tickets_assigned_user_id_foreign")
+  category_services                          category_services? @relation(fields: [category_service_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "tickets_category_service_id_foreign")
+  departments                                departments        @relation(fields: [department_id], references: [id], onUpdate: Restrict, map: "tickets_department_id_foreign")
+  offices_tickets_office_idTooffices         offices?           @relation("tickets_office_idTooffices", fields: [office_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "tickets_office_id_foreign")
+  offices_tickets_office_support_toTooffices offices            @relation("tickets_office_support_toTooffices", fields: [office_support_to], references: [id], onUpdate: Restrict, map: "tickets_office_support_to_foreign")
+  ticket_status                              ticket_status      @relation(fields: [status_id], references: [id], onUpdate: Restrict, map: "tickets_status_id_foreign")
+  users_tickets_user_idTousers               users?             @relation("tickets_user_idTousers", fields: [user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "tickets_user_id_foreign")
+
+  @@index([assigned_user_id], map: "tickets_assigned_user_id_foreign")
+  @@index([category_service_id], map: "tickets_category_service_id_foreign")
+  @@index([department_id], map: "tickets_department_id_foreign")
+  @@index([office_id], map: "tickets_office_id_foreign")
+  @@index([office_support_to], map: "tickets_office_support_to_foreign")
+  @@index([status_id], map: "tickets_status_id_foreign")
+  @@index([user_id], map: "tickets_user_id_foreign")
+}
+
+model users {
+  id                                                                                      Int                             @id @default(autoincrement()) @db.UnsignedInt
+  first_name                                                                              String                          @db.VarChar(255)
+  last_name                                                                               String                          @db.VarChar(255)
+  email                                                                                   String                          @unique(map: "users_email_unique") @db.VarChar(255)
+  password                                                                                String                          @db.VarChar(60)
+  activated                                                                               users_activated                 @default(dbgenerated("0"))
+  role_id                                                                                 Int                             @db.UnsignedInt
+  office_id                                                                               Int                             @db.UnsignedInt
+  department_id                                                                           Int                             @db.UnsignedInt
+  remember_token                                                                          String?                         @db.VarChar(100)
+  dashboard_position                                                                      Int                             @default(0) @db.UnsignedInt
+  deleted_at                                                                              DateTime?                       @db.Timestamp(0)
+  created_at                                                                              DateTime?                       @db.Timestamp(0)
+  updated_at                                                                              DateTime?                       @db.Timestamp(0)
+  comment_to_users                                                                        comment_to_users[]
+  department_satisfaction_forms_department_satisfaction_forms_cancellation_user_idTousers department_satisfaction_forms[] @relation("department_satisfaction_forms_cancellation_user_idTousers")
+  department_satisfaction_forms_department_satisfaction_forms_evaluation_user_idTousers   department_satisfaction_forms[] @relation("department_satisfaction_forms_evaluation_user_idTousers")
+  department_satisfaction_forms_department_satisfaction_forms_user_idTousers              department_satisfaction_forms[] @relation("department_satisfaction_forms_user_idTousers")
+  expected_results                                                                        expected_results[]
+  faqs                                                                                    faqs[]
+  functional_areas                                                                        functional_areas[]
+  indicators                                                                              indicators[]
+  involved_users                                                                          involved_users[]
+  pei_products                                                                            pei_products[]
+  peis                                                                                    peis[]
+  product_transactions                                                                    product_transactions[]
+  products                                                                                products[]
+  registration_forms                                                                      registration_forms[]
+  role_user                                                                               role_user[]
+  strategic_axes                                                                          strategic_axes[]
+  strategic_objectives                                                                    strategic_objectives[]
+  strategics                                                                              strategics[]
+  ticket_comments                                                                         ticket_comments[]
+  ticket_histories                                                                        ticket_histories[]
+  ticket_tasks_ticket_tasks_assigned_user_idTousers                                       ticket_tasks[]                  @relation("ticket_tasks_assigned_user_idTousers")
+  ticket_tasks_ticket_tasks_user_idTousers                                                ticket_tasks[]                  @relation("ticket_tasks_user_idTousers")
+  tickets_tickets_assigned_user_idTousers                                                 tickets[]                       @relation("tickets_assigned_user_idTousers")
+  tickets_tickets_user_idTousers                                                          tickets[]                       @relation("tickets_user_idTousers")
+  departments                                                                             departments                     @relation(fields: [department_id], references: [id], onUpdate: Restrict, map: "users_department_id_foreign")
+  offices                                                                                 offices                         @relation(fields: [office_id], references: [id], onUpdate: Restrict, map: "users_office_id_foreign")
+  roles                                                                                   roles                           @relation(fields: [role_id], references: [id], onUpdate: Restrict, map: "users_role_id_foreign")
+
+  @@index([department_id], map: "users_department_id_foreign")
+  @@index([office_id], map: "users_office_id_foreign")
+  @@index([role_id], map: "users_role_id_foreign")
+}
+
+enum department_evaluations_evaluator {
+  SI
+  NO
+}
+
+enum department_evaluations_central_office {
+  SI
+  NO
+}
+
+enum permissions_status {
+  Pendiente
+  Activado
+}
+
+enum ticket_tasks_status_id {
+  Pendiente
+  Completada
+  Cancelada
+}
+
+enum users_activated {
+  active @map("1")
+  inactive @map("0")
+}
+
+enum tickets_priority {
+  Baja
+  Media
+  Alta
+  Urgente
+}
+
+enum products_status {
+  En_uso     @map("En uso")
+  Desuso
+  Disponible
+  Da_ado     @map("Dañado")
+}
