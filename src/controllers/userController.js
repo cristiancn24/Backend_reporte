@@ -1,6 +1,10 @@
 const { users_activated } = require('@prisma/client/wasm');
+const bcrypt = require('bcrypt');
 const prisma = require('../db');
 const { Prisma } = require('@prisma/client');
+const { asignarToken } = require('../auth');
+const jwt = require('jsonwebtoken');
+const secret = process.env.JWT_SECRET || require('../config').jwt.secret;
 
 const userController = {
   // Obtener todos los usuarios
@@ -114,9 +118,7 @@ getEstadisticasSoportes: async (req, res) => {
         deleted_at: null,
         activated: "active",
         office_id: 1,
-        dashboard_position: {
-    in: [1, 2]
-  }
+        dashboard_position: { in: [1, 2] }
       },
       select: {
         id: true,
@@ -128,7 +130,7 @@ getEstadisticasSoportes: async (req, res) => {
     // Calcular métricas para cada soporte
     const estadisticas = await Promise.all(
       soportes.map(async (soporte) => {
-        // Tickets abiertos y cerrados
+        // Tickets abiertos y cerrados (manteniendo misma lógica)
         const abiertos = await prisma.tickets.count({
           where: {
             assigned_user_id: soporte.id,
@@ -145,32 +147,37 @@ getEstadisticasSoportes: async (req, res) => {
           }
         });
 
-        // CONSULTA CORREGIDA PARA TIEMPO PROMEDIO
+        // Consulta SQL compatible y corregida
         const resoluciones = await prisma.$queryRaw`
           SELECT 
             AVG(
               TIMESTAMPDIFF(
                 MINUTE,
-                t.created_at,
-                th_cierre.created_at
+                (SELECT MIN(th_inicio.created_at) 
+                 FROM ticket_histories th_inicio 
+                 WHERE th_inicio.ticket_id = t.id AND th_inicio.status_id = 3),
+                (SELECT MIN(th_cierre.created_at)
+                 FROM ticket_histories th_cierre
+                 WHERE th_cierre.ticket_id = t.id AND th_cierre.status_id = 5)
               )
             ) as promedio_minutos
           FROM tickets t
-          JOIN ticket_histories th_cierre ON t.id = th_cierre.ticket_id
           WHERE t.assigned_user_id = ${soporte.id}
-          AND th_cierre.status_id = 5
-          AND t.status_id = 5
-          AND th_cierre.created_at BETWEEN ${dateCondition.gte} AND ${dateCondition.lte}
-          AND t.created_at BETWEEN ${dateCondition.gte} AND ${dateCondition.lte}
-          AND th_cierre.created_at > t.created_at
+            AND t.status_id = 5
+            AND t.created_at BETWEEN ${dateCondition.gte} AND ${dateCondition.lte}
+            AND EXISTS (
+              SELECT 1 FROM ticket_histories th
+              WHERE th.ticket_id = t.id AND th.status_id = 3
+            )
         `;
 
+        // Manteniendo el mismo formato de respuesta original
         return {
           ...soporte,
           ticketsAbiertos: abiertos,
           ticketsCerrados: cerrados,
           promedioTiempo: resoluciones[0]?.promedio_minutos 
-            ? Math.round(resoluciones[0].promedio_minutos)
+            ? Math.round(resoluciones[0].promedio_minutos) // Manteniendo en minutos como antes
             : 0
         };
       })
@@ -320,7 +327,114 @@ getEstadisticasSoportes: async (req, res) => {
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
-  }
+  },
+
+  login: async (email, password) => {
+    console.log('Credenciales recibidas:', { email, password });
+        try {
+            // 1. Buscar usuario por email
+            const user = await prisma.users.findUnique({
+                where: { email }
+            });
+
+            if (!user) {
+                throw new Error('Usuario no encontrado');
+            }
+
+            // 2. Verificar contraseña
+            const storedHash = user.password.replace('$2y$', '$2a$');
+            const passwordMatch = await bcrypt.compare(password, storedHash);
+            
+            if (!passwordMatch) {
+                throw new Error('Contraseña incorrecta');
+            }
+
+            // 3. Generar token usando la función importada
+            const token = asignarToken({ 
+                id: user.id, 
+                email: user.email 
+            });
+
+            return {
+                token,
+                user: {
+                    id: user.id,
+                    email: user.email,
+                    nombre: user.first_name,
+                    apellido: user.last_name,
+                    role_id: user.role_id,
+                }
+            };
+        } catch (error) {
+            console.error('Error en login:', error);
+            
+            // Mejoramos el manejo de errores
+            if (error instanceof Prisma.PrismaClientKnownRequestError) {
+                throw new Error('Error de base de datos');
+            }
+            
+            throw error; // Re-lanzamos otros errores
+        }
+    },
+
+    logout: async (req, res) => {
+    let token;
+    
+    try {
+        // 1. Verificar el header de autorización
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+            return res.status(401).json({ 
+                success: false,
+                error: "Token no proporcionado o formato inválido" 
+            });
+        }
+
+        // 2. Extraer y verificar el token
+        token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] });
+        
+        // 3. Manejar ambos formatos de ID
+        const userId = decoded.userId || decoded.id;
+        if (!userId || !decoded.email) {
+            console.error("Payload del token inválido:", decoded);
+            return res.status(401).json({ 
+                success: false,
+                error: "Estructura del token inválida" 
+            });
+        }
+
+        // 4. Aquí deberías invalidar el token (ej. agregar a lista negra)
+        // tokenBlacklist.add(token); // Implementar según tu sistema
+
+        // 5. Responder con éxito
+        res.status(200).json({
+            success: true,
+            message: "Sesión cerrada exitosamente",
+            user: {
+                id: userId,
+                email: decoded.email
+            }
+        });
+
+    } catch (error) {
+        console.error("Error en logout:", {
+            message: error.message,
+            token: token?.slice(0, 15) + '...'
+        });
+
+        // Manejar diferentes tipos de errores
+        const statusCode = error instanceof jwt.JsonWebTokenError ? 401 : 500;
+        
+        res.status(statusCode).json({
+            success: false,
+            error: "Error durante el cierre de sesión",
+            ...(process.env.NODE_ENV === 'development' && { 
+                debug: error.message 
+            })
+        });
+    }
+}
 };
 
 module.exports = userController;
