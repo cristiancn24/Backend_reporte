@@ -3,8 +3,6 @@ const morgan = require('morgan');
 const config = require('./config');
 const cors = require('cors');
 
-const users = require('./routes/users/routes.js');
-const tickets = require('./routes/tickets/routes.js');
 const userRoutes = require('./routes/userRoutes');  
 const ticketRoutes = require('./routes/ticketRoutes');
 
