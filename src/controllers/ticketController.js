@@ -63,21 +63,21 @@ const ticketController = {
             }
 
             if (searchText) {
-    const searchLower = searchText.toLowerCase();
-    where.OR = [
-        { subject: { contains: searchLower } },
-        { comment: { contains: searchLower } }
-    ];
+                const searchLower = searchText.toLowerCase();
+                where.OR = [
+                    { subject: { contains: searchLower } },
+                    { comment: { contains: searchLower } }
+                ];
 
-    // Búsqueda por número de ticket (TKT-001 o solo 001)
-    const ticketNumberMatch = searchLower.match(/^tkt-?(\d+)$/i) || 
-                            searchLower.match(/^(\d+)$/);
-    
-    if (ticketNumberMatch) {
-        const ticketId = parseInt(ticketNumberMatch[1]);
-        where.OR.push({ id: ticketId });
-    }
-}
+                // Búsqueda por número de ticket (TKT-001 o solo 001)
+                const ticketNumberMatch = searchLower.match(/^tkt-?(\d+)$/i) || 
+                                        searchLower.match(/^(\d+)$/);
+                
+                if (ticketNumberMatch) {
+                    const ticketId = parseInt(ticketNumberMatch[1]);
+                    where.OR.push({ id: ticketId });
+                }
+            }
 
             // Consulta a la base de datos
             const tickets = await prisma.tickets.findMany({
