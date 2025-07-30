@@ -1,4 +1,6 @@
 const prisma = require('../db');
+const { tickets_priority } = require('@prisma/client');
+
 
 // Función robusta para formatear fecha en 24 horas
 const formatDate24h = (dateString) => {
@@ -176,7 +178,267 @@ const ticketController = {
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
+    },
+
+    createTicket: async (req, res) => {
+    try {
+
+         const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Usuario no autenticado'
+      });
     }
+        const {
+            subject,
+            comment,
+            department_id,
+            category_service_id = null,
+            user_id = userId,
+            priority = null,
+            validated = null,
+            office_support_to = 1,
+            assigned_user_id = null,
+            office_id = null,
+        } = req.body;
+
+        if (!subject || !comment || !department_id) {
+            return res.status(400).json({
+                success: false,
+                error: 'Los campos subject, comment y department_id son obligatorios'
+            });
+        }
+
+        const ticket = await prisma.tickets.create({
+            data: {
+                subject,
+                comment,
+                department_id,
+                category_service_id,
+                user_id,
+                priority: priority ? tickets_priority[priority] : null,
+                validated,
+                office_support_to,
+                assigned_user_id,
+                office_id,
+                created_at: new Date(),
+                updated_at: new Date()
+            }
+        });
+
+        res.status(201).json({
+            success: true,
+            message: 'Ticket creado correctamente',
+            data: {
+                id: ticket.id,
+                ticket: `TKT-${ticket.id.toString().padStart(3, '0')}`,
+                ...ticket
+            }
+        });
+    } catch (error) {
+        console.error('Error en createTicket:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al crear ticket',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+},
+
+getTicketById: async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID de ticket inválido'
+      });
+    }
+
+    const ticket = await prisma.tickets.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        ticket_status: { select: { name: true } },
+        users_tickets_user_idTousers: { select: { first_name: true, last_name: true } },
+        users_tickets_assigned_user_idTousers: { 
+          select: { first_name: true, last_name: true, role_id: true }
+        },
+        ticket_histories: {
+          select: { status_id: true, created_at: true },
+          orderBy: { created_at: 'asc' }
+        }
+      }
+    });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        error: 'Ticket no encontrado'
+      });
+    }
+
+    const statusName = ticket.ticket_status?.name || 'Desconocido';
+    const createdBy = ticket.users_tickets_user_idTousers
+      ? `${ticket.users_tickets_user_idTousers.first_name} ${ticket.users_tickets_user_idTousers.last_name}`
+      : 'Desconocido';
+    const assignedTo = ticket.users_tickets_assigned_user_idTousers
+      ? `${ticket.users_tickets_assigned_user_idTousers.first_name} ${ticket.users_tickets_assigned_user_idTousers.last_name}`
+      : 'No asignado';
+
+    res.json({
+      success: true,
+      data: {
+        id: ticket.id,
+        ticket: `TKT-${ticket.id.toString().padStart(3, '0')}`,
+        subject: ticket.subject,
+        comment: ticket.comment,
+        created_by: createdBy,
+        assigned_to: assignedTo,
+        status: statusName,
+        created_at: ticket.created_at,
+        updated_at: ticket.updated_at,
+        histories: ticket.ticket_histories
+      }
+    });
+  } catch (error) {
+    console.error('Error en getTicketById:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener ticket',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+},
+
+getTicketsByAssignedUserId: async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId || isNaN(parseInt(userId))) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID de usuario inválido'
+      });
+    }
+
+    const tickets = await prisma.tickets.findMany({
+      where: { assigned_user_id: parseInt(userId) },
+      include: {
+        ticket_status: { select: { name: true } },
+        users_tickets_user_idTousers: { select: { first_name: true, last_name: true } },
+        users_tickets_assigned_user_idTousers: { 
+          select: { first_name: true, last_name: true, role_id: true }
+        },
+        ticket_histories: {
+          select: { status_id: true, created_at: true },
+          orderBy: { created_at: 'asc' }
+        }
+      }
+    });
+
+    const formattedTickets = tickets.map(ticket => {
+      const statusName = ticket.ticket_status?.name || 'Desconocido';
+      return {
+        id: ticket.id,
+        ticket: `TKT-${ticket.id.toString().padStart(3, '0')}`,
+        subject: ticket.subject,
+        comment: ticket.comment,
+        created_by: ticket.users_tickets_user_idTousers 
+          ? `${ticket.users_tickets_user_idTousers.first_name} ${ticket.users_tickets_user_idTousers.last_name}`
+          : 'Desconocido',
+        assigned_to: ticket.users_tickets_assigned_user_idTousers 
+          ? `${ticket.users_tickets_assigned_user_idTousers.first_name} ${ticket.users_tickets_assigned_user_idTousers.last_name}`
+          : 'No asignado',
+        status: statusName,
+        created_at: ticket.created_at,
+        updated_at: ticket.updated_at
+      };
+    });
+
+    res.json({
+      success: true,
+      data: formattedTickets
+    });
+  } catch (error) {
+    console.error('Error en getTicketsByAssignedUserId:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener tickets asignados',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+},
+
+updateTicket: async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { subject, comment, status_id, assigned_user_id } = req.body;
+
+        if (!id || isNaN(parseInt(id))) {
+            return res.status(400).json({
+                success: false,
+                error: 'ID de ticket inválido'
+            });
+        }
+
+        const ticket = await prisma.tickets.update({
+            where: { id: parseInt(id) },
+            data: {
+                subject,
+                comment,
+                ticket_status_id: status_id,
+                assigned_user_id,
+                updated_at: new Date()
+            }
+        });
+
+        res.json({
+            success: true,
+            message: 'Ticket actualizado correctamente',
+            data: ticket
+        });
+    } catch (error) {
+        console.error('Error en updateTicket:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al actualizar ticket',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+},
+
+deleteTicket: async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id || isNaN(parseInt(id))) {
+            return res.status(400).json({
+                success: false,
+                error: 'ID de ticket inválido'
+            });
+        }
+
+        await prisma.tickets.delete({
+            where: { id: parseInt(id) }
+        });
+
+        res.json({
+            success: true,
+            message: 'Ticket eliminado correctamente'
+        });
+    } catch (error) {
+        console.error('Error en deleteTicket:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al eliminar ticket',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+
+},
 };
 
 module.exports = ticketController;

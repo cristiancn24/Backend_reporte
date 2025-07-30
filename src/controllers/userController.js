@@ -6,6 +6,7 @@ const { asignarToken } = require('../auth');
 const jwt = require('jsonwebtoken');
 const secret = process.env.JWT_SECRET || require('../config').jwt.secret;
 
+
 const userController = {
   // Obtener todos los usuarios
   getAllUsers: async (req, res) => {
@@ -52,23 +53,50 @@ const userController = {
 
   // Crear nuevo usuario
   createUser: async (req, res) => {
-    try {
-      const newUser = await prisma.users.create({
-        data: {
-          first_name: req.body.first_name,
-          last_name: req.body.last_name,
-          email: req.body.email,
-          password: req.body.password, // Asegúrate de hashear esto
-          role_id: req.body.role_id,
-          office_id: req.body.office_id,
-          department_id: req.body.department_id
-        }
-      });
-      res.status(201).json(newUser);
-    } catch (error) {
-      res.status(400).json({ error: error.message });
+  try {
+
+
+    console.log(req.user);
+
+    if (req.user?.role_id !== 1) {
+      return res.status(403).json({ error: 'No tienes permisos para crear usuarios' });
     }
-  },
+
+    const { first_name, last_name, email, password, role_id, office_id, department_id } = req.body;
+
+    if (!first_name || !last_name || !email || !password || !role_id) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = await prisma.users.create({
+  data: {
+    first_name: req.body.first_name,
+    last_name: req.body.last_name,
+    email: req.body.email,
+    password: hashedPassword,
+    office_id: parseInt(req.body.office_id),
+    department_id: parseInt(req.body.department_id),
+    role_id: parseInt(req.body.role_id),
+    created_at: new Date(),
+    updated_at: new Date()
+  }
+});
+
+    res.status(201).json({
+      id: newUser.id,
+      first_name: newUser.first_name,
+      last_name: newUser.last_name,
+      email: newUser.email,
+      role_id: newUser.role_id
+    });
+  } catch (error) {
+    console.error('Error en createUser:', error);
+    res.status(400).json({ error: error.message });
+  }
+},
+
 
   // Actualizar usuario
   updateUser: async (req, res) => {
@@ -352,7 +380,8 @@ getEstadisticasSoportes: async (req, res) => {
             // 3. Generar token usando la función importada
             const token = asignarToken({ 
                 id: user.id, 
-                email: user.email 
+                email: user.email,
+                role_id: user.role_id
             });
 
             return {
@@ -378,63 +407,64 @@ getEstadisticasSoportes: async (req, res) => {
     },
 
     logout: async (req, res) => {
-    let token;
-    
-    try {
-        // 1. Verificar el header de autorización
-        const authHeader = req.headers.authorization;
-        if (!authHeader?.startsWith('Bearer ')) {
-            return res.status(401).json({ 
-                success: false,
-                error: "Token no proporcionado o formato inválido" 
-            });
-        }
+      console.log("👉 Cookie recibida:", req.headers.cookie);
+  const cookie = require("cookie");
+  const jwt = require("jsonwebtoken");
+  const secret = process.env.JWT_SECRET || require('../config').jwt.secret;
 
-        // 2. Extraer y verificar el token
-        token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] });
-        
-        // 3. Manejar ambos formatos de ID
-        const userId = decoded.userId || decoded.id;
-        if (!userId || !decoded.email) {
-            console.error("Payload del token inválido:", decoded);
-            return res.status(401).json({ 
-                success: false,
-                error: "Estructura del token inválida" 
-            });
-        }
+  try {
+    const rawCookies = req.headers.cookie;
 
-        // 4. Aquí deberías invalidar el token (ej. agregar a lista negra)
-        // tokenBlacklist.add(token); // Implementar según tu sistema
-
-        // 5. Responder con éxito
-        res.status(200).json({
-            success: true,
-            message: "Sesión cerrada exitosamente",
-            user: {
-                id: userId,
-                email: decoded.email
-            }
-        });
-
-    } catch (error) {
-        console.error("Error en logout:", {
-            message: error.message,
-            token: token?.slice(0, 15) + '...'
-        });
-
-        // Manejar diferentes tipos de errores
-        const statusCode = error instanceof jwt.JsonWebTokenError ? 401 : 500;
-        
-        res.status(statusCode).json({
-            success: false,
-            error: "Error durante el cierre de sesión",
-            ...(process.env.NODE_ENV === 'development' && { 
-                debug: error.message 
-            })
-        });
+    // 🔐 1. Validar si existen cookies
+    if (!rawCookies) {
+      return res.status(401).json({ error: "No autenticado. Cookie no encontrada." });
     }
+
+    // 🔍 2. Parsear cookies y obtener auth_token
+    const cookies = cookie.parse(rawCookies);
+    const token = cookies.auth_token;
+
+    if (!token) {
+      return res.status(401).json({ error: "No autenticado. auth_token no encontrado." });
+    }
+
+    // 🔐 3. Verificar el JWT
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch (err) {
+      return res.status(401).json({ error: "Token inválido o expirado" });
+    }
+
+    // ✅ 4. Si todo está bien, eliminar cookie
+    const serialized = cookie.serialize("auth_token", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 0,
+      path: "/"
+    });
+
+    res.setHeader("Set-Cookie", serialized);
+
+    return res.status(200).json({
+      success: true,
+      message: "Sesión cerrada exitosamente",
+      user: {
+        id: decoded.id,
+        email: decoded.email
+      }
+    });
+
+  } catch (error) {
+    console.error("Error en logout:", error);
+    res.status(500).json({ error: "Error al cerrar sesión" });
+  }
 }
+
+
+
+
 };
 
 module.exports = userController;
