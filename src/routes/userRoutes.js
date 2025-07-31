@@ -12,7 +12,7 @@ router.post('/', verificarToken, userController.createUser);
 router.patch('/:id', verificarToken, userController.updateUser);
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body
+    const { email, password, rememberMe } = req.body
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email y contraseña son requeridos" })
@@ -20,12 +20,14 @@ router.post("/login", async (req, res) => {
 
     const result = await userController.login(email, password) // debe devolver { token, user }
 
+    const maxAge = rememberMe ? 60 * 60 * 24 * 7 : 60 * 60 * 2; // 7 días vs 2 horas
+
     // Serializar la cookie del JWT
     const serializedCookie = cookie.serialize("auth_token", result.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 60 * 60 * 24, // 1 día
+      maxAge,
       path: "/",
     })
 

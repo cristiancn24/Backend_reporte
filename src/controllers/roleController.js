@@ -2,14 +2,20 @@ const prisma = require('../db');
 
 const roleController = {
   async getAllRoles(req, res) {
-    try {
-      const roles = await prisma.roles.findMany();
-      res.json(roles);
-    } catch (error) {
-      console.error('Error al obtener roles:', error);
-      res.status(500).json({ error: 'Error al obtener roles' });
-    }
-  },
+  try {
+    const roles = await prisma.roles.findMany({
+      where: {
+        id: {
+          notIn: [5, 6, 7, 9, 10] // 🚫 Excluye estos roles
+        }
+      }
+    });
+    res.json(roles);
+  } catch (error) {
+    console.error('Error al obtener roles:', error);
+    res.status(500).json({ error: 'Error al obtener roles' });
+  }
+},
   async createRole(req, res) {
     const { name } = req.body;
     try {
