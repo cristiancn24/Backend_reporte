@@ -8,7 +8,8 @@ const ticketRoutes = require('./routes/ticketRoutes');
 const faqRoutes = require('./routes/faqRoutes');
 const roleRoutes = require('./routes/roleRoutes');
 const permissionRoutes = require('./routes/permissionRoutes');
-
+const officesRoutes = require('./routes/officesRoutes');
+const departmentsRoutes = require('./routes/departmentsRoutes'); 
 const app = express();
 
 app.use(morgan('dev'));
@@ -28,6 +29,8 @@ app.use('/api/tickets', ticketRoutes)
 app.use('/api/faq', faqRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/permissions', permissionRoutes);
+app.use('/api/offices', officesRoutes);
+app.use('/api/departments', departmentsRoutes); 
 //app.use('/api/tickets', tickets)
 //app.use('/api/users', users)
 
