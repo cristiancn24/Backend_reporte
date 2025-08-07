@@ -10,7 +10,10 @@ const roleRoutes = require('./routes/roleRoutes');
 const permissionRoutes = require('./routes/permissionRoutes');
 const officesRoutes = require('./routes/officesRoutes');
 const departmentsRoutes = require('./routes/departmentsRoutes'); 
+const categoryServiceRoutes = require('./routes/categoryServiceRoutes');
 const app = express();
+const cookieParser = require("cookie-parser");
+app.use(cookieParser());
 
 app.use(morgan('dev'));
 app.use(express.json());
@@ -31,6 +34,7 @@ app.use('/api/roles', roleRoutes);
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/offices', officesRoutes);
 app.use('/api/departments', departmentsRoutes); 
+app.use('/api/categoryServices', categoryServiceRoutes);
 //app.use('/api/tickets', tickets)
 //app.use('/api/users', users)
 

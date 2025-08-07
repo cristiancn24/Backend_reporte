@@ -10,24 +10,36 @@ const secret = process.env.JWT_SECRET || require('../config').jwt.secret;
 const userController = {
   // Obtener todos los usuarios
   getAllUsers: async (req, res) => {
-    try {
-      const users = await prisma.users.findMany({
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const [users, totalCount] = await Promise.all([
+      prisma.users.findMany({
         where: { deleted_at: null },
-        select: {
-          id: true,
-          first_name: true,
-          last_name: true,
-          email: true,
+        skip,
+        take: limit,
+        include: {
           roles: true,
-          offices: true,
-          created_at: true
+          offices: true
         }
-      });
-      res.json(users);
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
-  },
+      }),
+      prisma.users.count({
+        where: { deleted_at: null }
+      })
+    ]);
+
+    res.json({
+      data: users,
+      page,
+      totalPages: Math.ceil(totalCount / limit),
+      totalItems: totalCount
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+},
 
   // Obtener usuario por ID
   getUserById: async (req, res) => {
@@ -62,10 +74,20 @@ const userController = {
       return res.status(403).json({ error: 'No tienes permisos para crear usuarios' });
     }
 
-    const { first_name, last_name, email, password, role_id, office_id, department_id } = req.body;
+    const { first_name, last_name, email, password, role_id, office_id, department_id, activated } = req.body;
+
+    console.log("ACTIVATED:", activated);
 
     if (!first_name || !last_name || !email || !password || !role_id) {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+
+    const existingUser = await prisma.users.findUnique({
+    where: { email },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ error: "El correo ya está registrado" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -78,6 +100,7 @@ const userController = {
     password: hashedPassword,
     office_id: parseInt(req.body.office_id),
     department_id: parseInt(req.body.department_id),
+    activated: "active",
     role_id: parseInt(req.body.role_id),
     created_at: new Date(),
     updated_at: new Date()
@@ -362,7 +385,16 @@ getEstadisticasSoportes: async (req, res) => {
         try {
             // 1. Buscar usuario por email
             const user = await prisma.users.findUnique({
-                where: { email }
+                where: { email },
+                include: {
+                    roles: {
+                        include: {
+                            permission_role: {
+                                include: { permissions: true }
+                            }
+                        }
+                    }
+                }
             });
 
             if (!user) {
@@ -385,14 +417,15 @@ getEstadisticasSoportes: async (req, res) => {
             });
 
             return {
-                token,
-                user: {
-                    id: user.id,
-                    email: user.email,
-                    nombre: user.first_name,
-                    apellido: user.last_name,
-                    role_id: user.role_id,
-                }
+              token,
+              user: {
+                id: user.id,
+                email: user.email,
+                nombre: user.first_name,
+                apellido: user.last_name,
+                role_id: user.role_id,
+                permisos: user.roles.permission_role.map(pr => pr.permissions.name)
+              }
             };
         } catch (error) {
             console.error('Error en login:', error);
@@ -460,10 +493,45 @@ getEstadisticasSoportes: async (req, res) => {
     console.error("Error en logout:", error);
     res.status(500).json({ error: "Error al cerrar sesión" });
   }
-}
+},
 
+getProfile: async (req, res) => {
+  try {
+    const user = await prisma.users.findUnique({
+      where: { id: req.user.id },
+      include: {
+        roles: {
+          include: {
+            permission_role: {
+              include: {
+                permissions: true
+              }
+            }
+          }
+        }
+      }
+    });
 
+    if (!user) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
 
+    // Extraer solo los nombres de permisos únicos
+    const permissions = user.roles.permission_role.map(pr => pr.permissions.name);
+
+    res.json({
+      id: user.id,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      email: user.email,
+      role_id: user.role_id,
+      permissions
+    });
+  } catch (error) {
+    console.error("Error en getProfile:", error);
+    res.status(500).json({ error: "Error obteniendo perfil" });
+  }
+},
 
 };
 

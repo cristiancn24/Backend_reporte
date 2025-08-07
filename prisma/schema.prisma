@@ -337,7 +337,7 @@ model permissions {
   id              Int                @id @default(autoincrement()) @db.UnsignedInt
   name            String?            @db.VarChar(255)
   description     String             @db.VarChar(255)
-  status          permissions_status @default(Pendiente)
+  status          permissions_status @default(Activado)
   deleted_at      DateTime?          @db.Timestamp(0)
   created_at      DateTime?          @db.Timestamp(0)
   updated_at      DateTime?          @db.Timestamp(0)
@@ -671,7 +671,7 @@ model users {
   last_name                                                                               String                          @db.VarChar(255)
   email                                                                                   String                          @unique(map: "users_email_unique") @db.VarChar(255)
   password                                                                                String                          @db.VarChar(60)
-  activated                                                                               users_activated                 @default(dbgenerated("0"))
+  activated                                                                               users_activated                 @default(dbgenerated("1"))
   role_id                                                                                 Int                             @db.UnsignedInt
   office_id                                                                               Int                             @db.UnsignedInt
   department_id                                                                           Int                             @db.UnsignedInt
@@ -738,6 +738,7 @@ enum users_activated {
   active @map("1")
   inactive @map("0")
 }
+
 
 enum tickets_priority {
   Baja

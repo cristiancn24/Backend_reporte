@@ -47,8 +47,7 @@ const faqController = {
   },
 
   createFAQ: async (req, res) => {
-    try {
-
+  try {
     const userId = req.user?.id;
 
     if (!userId) {
@@ -58,32 +57,34 @@ const faqController = {
       });
     }
 
-      const { subject, description, category_service_id } = req.body;
+    const { subject, description, category_service_id } = req.body;
 
-      if (!subject || !description || !category_service_id) {
-        return res.status(400).json({
-          success: false,
-          error: 'Todos los campos son requeridos'
-        });
-      }
-
-      const newFAQ = await prisma.faqs.create({
-        data: { subject, description, category_service_id }
-      });
-
-      res.status(201).json({
-        success: true,
-        data: newFAQ
-      });
-    } catch (error) {
-      console.error('Error en createFAQ:', error);
-      res.status(500).json({
+    if (!subject || !description || !category_service_id) {
+      return res.status(400).json({
         success: false,
-        error: 'Error al crear FAQ',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        error: 'Todos los campos son requeridos'
       });
     }
-  },
+
+    const newFAQ = await prisma.faqs.create({
+      data: { subject, description, category_service_id }
+    });
+
+    res.status(201).json({
+      success: true,
+      data: newFAQ
+    });
+
+  } catch (error) {
+    console.error('Error en createFAQ:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al crear FAQ',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+},
+
 
     updateFAQ: async (req, res) => {
         try {

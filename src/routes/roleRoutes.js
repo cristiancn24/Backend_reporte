@@ -7,5 +7,8 @@ router.get('/', verificarToken, roleController.getAllRoles);
 router.post('/', verificarToken, roleController.createRole);
 router.patch('/:id', verificarToken, roleController.updateRole);
 router.delete('/:id', verificarToken, roleController.deleteRole);
+router.get('/:roleId/permissions', verificarToken, roleController.getRolePermissions);
+router.post('/assign-permissions', verificarToken, roleController.assignPermissionsToRole);
+router.get('/roles-with-permissions', verificarToken, roleController.getRolesWithPermissions);
 
 module.exports = router;

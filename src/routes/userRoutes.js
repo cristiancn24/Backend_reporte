@@ -7,6 +7,7 @@ const cookie = require('cookie');
 router.get('/', verificarToken, userController.getAllUsers);
 router.get('/estadisticas', userController.getEstadisticasSoportes);
 router.get('/tecnicos', userController.getTechnicians);
+router.get('/me', verificarToken, userController.getProfile);
 router.get('/:id', userController.getUserById);
 router.post('/', verificarToken, userController.createUser);
 router.patch('/:id', verificarToken, userController.updateUser);

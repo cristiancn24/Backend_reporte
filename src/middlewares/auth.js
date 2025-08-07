@@ -20,6 +20,12 @@ const verificarToken = (req, res, next) => {
 
     const decoded = jwt.verify(token, secret);
 
+    console.log("🔍 Decoded JWT en verificarToken:", decoded);
+
+    if (!decoded.id) {
+      return res.status(400).json({ error: "El token no contiene un ID de usuario válido." });
+    }
+
     // Guardar datos del usuario en la request
     req.user = {
       id: decoded.id,

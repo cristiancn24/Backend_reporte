@@ -18,7 +18,7 @@ const permissionController = {
             data: {
             name,
             description,
-            status,
+            status: status === "Activado" ? "Activado" : "Pendiente",
             created_at: new Date(),
             updated_at: new Date()
             },
