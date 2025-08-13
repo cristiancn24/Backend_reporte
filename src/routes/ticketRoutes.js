@@ -4,7 +4,7 @@ const ticketController = require('../controllers/ticketController');
 const verificarToken = require('../middlewares/auth');
 
 router.post('/', verificarToken, ticketController.createTicket);
-router.get('/', ticketController.getTicketsForTable);
+router.get('/', ticketController.getTickets);
 router.get('/status-options', ticketController.getStatusOptions);
 router.get('/:id', ticketController.getTicketById);
 router.get('/assigned/:userId', ticketController.getTicketsByAssignedUserId);
