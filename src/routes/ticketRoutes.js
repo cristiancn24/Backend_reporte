@@ -6,6 +6,7 @@ const verificarToken = require('../middlewares/auth');
 router.post('/', verificarToken, ticketController.createTicket);
 router.get('/', ticketController.getTickets);
 router.get('/status-options', ticketController.getStatusOptions);
+router.get('/filters', ticketController.handler);
 router.get('/:id', ticketController.getTicketById);
 router.get('/assigned/:userId', ticketController.getTicketsByAssignedUserId);
 router.patch('/:id', verificarToken, ticketController.updateTicket);
