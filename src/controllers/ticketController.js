@@ -1,6 +1,7 @@
 // controllers/ticket.controller.js (CommonJS)
 const prisma = require("../db");
 const { Prisma } = require("@prisma/client");
+const path = require("path");
 
 // util
 const initialsOf = (f = "", l = "") =>
@@ -355,6 +356,7 @@ async function createTicket(req, res) {
 }
 
 
+// controllers/ticket.controller.js
 async function getTicketById(req, res) {
   try {
     const { id } = req.params;
@@ -363,21 +365,14 @@ async function getTicketById(req, res) {
       return res.status(400).json({ success: false, error: "ID inválido" });
     }
 
-    // 1) Traer el ticket base (sin include para evitar errores de nombres)
-    const t = await prisma.tickets.findUnique({
-      where: { id: ticketId },
-    });
-
+    // 1) Ticket base
+    const t = await prisma.tickets.findUnique({ where: { id: ticketId } });
     if (!t) {
       return res.status(404).json({ success: false, error: "Ticket no encontrado" });
     }
 
-    // 2) Resolver nombres básicos por FK
-    const [
-      status,
-      createdByUser,
-      assignedToUser,
-    ] = await Promise.all([
+    // 2) Resolver nombres (estado, creador, asignado)
+    const [status, createdByUser, assignedToUser] = await Promise.all([
       prisma.ticket_status.findUnique({
         where: { id: t.status_id ?? 0 },
         select: { name: true },
@@ -392,13 +387,8 @@ async function getTicketById(req, res) {
       }),
     ]);
 
-    // 3) Resolver oficina: probar varios candidatos
-    const officeIdCandidate =
-      t.office_id ??
-      t.office_support_to ??
-      t.office_support_from ??
-      null;
-
+    // 3) Oficina
+    const officeIdCandidate = t.office_id ?? t.office_support_to ?? t.office_support_from ?? null;
     const office = officeIdCandidate
       ? await prisma.offices.findUnique({
           where: { id: Number(officeIdCandidate) },
@@ -406,16 +396,15 @@ async function getTicketById(req, res) {
         })
       : null;
 
-    // 4) Historial desde la tabla; si no hay, devolvemos un fallback "Creado"
+    // 4) Historial
     const rawHistories = await prisma.ticket_histories.findMany({
-      where: { ticket_id: ticketId },   // si tu FK se llama distinto, cámbialo aquí
+      where: { ticket_id: ticketId },
       orderBy: { created_at: "asc" },
       select: { status_id: true, created_at: true, user_id: true },
     });
 
-    // Enriquecer con nombres (estado y usuario)
     const statusIds = [...new Set(rawHistories.map(h => h.status_id).filter(Boolean))];
-    const userIds = [...new Set(rawHistories.map(h => h.user_id).filter(Boolean))];
+    const userIds   = [...new Set(rawHistories.map(h => h.user_id).filter(Boolean))];
 
     const [statusList, userList] = await Promise.all([
       statusIds.length
@@ -433,7 +422,7 @@ async function getTicketById(req, res) {
     ]);
 
     const statusMap = new Map(statusList.map(s => [s.id, s.name]));
-    const userMap = new Map(userList.map(u => [u.id, `${u.first_name} ${u.last_name}`]));
+    const userMap   = new Map(userList.map(u => [u.id, `${u.first_name} ${u.last_name}`]));
 
     let historiesOut = rawHistories.map(h => ({
       status_id: h.status_id,
@@ -442,7 +431,6 @@ async function getTicketById(req, res) {
       user: h.user_id ? (userMap.get(h.user_id) || null) : null,
     }));
 
-    // Fallback si no hay historial en DB: agregamos evento "Creado"
     if (!historiesOut.length) {
       historiesOut = [{
         status_id: t.status_id ?? null,
@@ -452,6 +440,49 @@ async function getTicketById(req, res) {
       }];
     }
 
+    // 5) Adjuntos
+    const uploadsRows = await prisma.ticket_uploads.findMany({
+      where: { ticket_id: ticketId, deleted_at: null },
+      select: { id: true, original_name: true, path: true, created_at: true },
+      orderBy: { created_at: "asc" },
+    });
+
+    const base = `${req.protocol}://${req.get("host")}`;
+    const uploadsOut = uploadsRows.map(u => ({
+      id: u.id,
+      name: u.original_name,
+      url: `${base}/uploads/${u.path}`,
+      created_at: u.created_at,
+    }));
+
+    // 6) Comentarios (⚠️ usa `comment` en vez de `content`)
+    //   No usamos `select` para evitar errores de nombres; mapeamos después.
+    const rawComments = await prisma.ticket_comments.findMany({
+      where: { ticket_id: ticketId, deleted_at: null },
+      orderBy: { created_at: "asc" },
+    });
+
+    const commentUserIds = [...new Set(rawComments.map(c => c.user_id).filter(Boolean))];
+    const commentUsers = commentUserIds.length
+      ? await prisma.users.findMany({
+          where: { id: { in: commentUserIds } },
+          select: { id: true, first_name: true, last_name: true },
+        })
+      : [];
+
+    const commentUserMap = new Map(
+      commentUsers.map(u => [u.id, `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim()])
+    );
+
+    const commentsOut = rawComments.map(c => ({
+      id: c.id,
+      user_name: commentUserMap.get(c.user_id) || "—",
+      content: c.comment ?? "",            // 👈 aquí va el texto del comentario
+      is_internal: Boolean(c.is_internal), // si no existe la columna, quedará `false`
+      created_at: c.created_at ?? null,
+    }));
+
+    // 7) Respuesta
     return res.json({
       success: true,
       data: {
@@ -461,11 +492,14 @@ async function getTicketById(req, res) {
         comment: t.comment,
         created_by: createdByUser ? `${createdByUser.first_name} ${createdByUser.last_name}` : "Desconocido",
         assigned_to: assignedToUser ? `${assignedToUser.first_name} ${assignedToUser.last_name}` : "No asignado",
+        status_id: t.status_id,
         status: status?.name || "Desconocido",
-        office_name: office?.name || null,             // 👈 ahora debería venir
+        office_name: office?.name || null,
         created_at: t.created_at,
         updated_at: t.updated_at,
-        histories: historiesOut,                       // 👈 con fallback "Creado"
+        histories: historiesOut,
+        uploads: uploadsOut,
+        comments: commentsOut,
       },
     });
   } catch (e) {
@@ -478,6 +512,8 @@ async function getTicketById(req, res) {
     });
   }
 }
+
+
 
 
 async function getTicketsByAssignedUserId(req, res) {
@@ -627,6 +663,110 @@ async function setTicketCategory(req, res) {
   res.json({ success: true, message: "Categoría actualizada" });
 }
 
+const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
+
+async function addAttachments(req, res) {
+  try {
+    const ticketId = Number(req.params.id);
+    if (!Number.isFinite(ticketId)) {
+      return res.status(400).json({ success: false, error: "ID inválido" });
+    }
+
+    const files = req.files || [];
+    if (!files.length) {
+      return res.status(400).json({ success: false, error: "No se enviaron archivos" });
+    }
+
+    const rows = await prisma.$transaction(
+      files.map((f) => {
+        const rel = path.relative(UPLOAD_ROOT, f.path).replace(/\\/g, "/");
+        return prisma.ticket_uploads.create({
+          data: {
+            ticket_id: ticketId,
+            original_name: f.originalname,
+            file: path.basename(f.path),
+            path: rel,                  // ej: "tickets/25/171077_test.pdf"
+            created_at: new Date(),
+            updated_at: new Date(),
+          },
+          select: { id: true, original_name: true, path: true, created_at: true },
+        });
+      })
+    );
+
+    const host = `${req.protocol}://${req.get("host")}`;
+    return res.json({
+      success: true,
+      data: rows.map(r => ({
+        id: r.id,
+        name: r.original_name,
+        url: `${host}/uploads/${r.path}`, // 👈 público
+        created_at: r.created_at,
+      })),
+    });
+  } catch (e) {
+    console.error("upload attachments error:", e);
+    res.status(500).json({ success: false, error: "No se pudieron subir los archivos" });
+  }
+}
+
+// controllers/ticketController.js
+async function addTicketComment(req, res) {
+  try {
+    const ticketId = Number(req.params.id);
+    const userId = req.user?.id ?? null; // si usas auth
+    const { comment } = req.body;
+
+    if (!Number.isFinite(ticketId)) {
+      return res.status(400).json({ success: false, error: "ID inválido" });
+    }
+    if (!comment?.trim()) {
+      return res.status(400).json({ success: false, error: "El comentario es obligatorio" });
+    }
+
+    // opcional: verifica que exista el ticket
+    const exists = await prisma.tickets.count({ where: { id: ticketId } });
+    if (!exists) {
+      return res.status(404).json({ success: false, error: "Ticket no encontrado" });
+    }
+
+    const row = await prisma.ticket_comments.create({
+      data: {
+        ticket_id: ticketId,
+        user_id: userId,               // puede ser null si no usas auth
+        comment: comment.trim(),       // ⚠️ tu columna es `comment`
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      select: { id: true, comment: true, created_at: true, user_id: true }, // ❌ sin is_internal
+    });
+
+    // Resuelve nombre del usuario (opcional)
+    let user_name = "—";
+    if (row.user_id) {
+      const u = await prisma.users.findUnique({
+        where: { id: row.user_id },
+        select: { first_name: true, last_name: true },
+      });
+      user_name = `${u?.first_name ?? ""} ${u?.last_name ?? ""}`.trim() || "—";
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        id: row.id,
+        user_name,
+        content: row.comment,      // lo mando como `content` para la UI
+        created_at: row.created_at,
+      },
+    });
+  } catch (e) {
+    console.error("addTicketComment error:", e);
+    return res.status(500).json({ success: false, error: "No se pudo agregar el comentario" });
+  }
+}
+
+
 module.exports = {
   getTickets,
   getTicketsForTable,
@@ -637,4 +777,6 @@ module.exports = {
   updateTicket,
   deleteTicket,
   handler,
+  addAttachments,
+  addTicketComment,
 };
