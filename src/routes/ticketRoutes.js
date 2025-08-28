@@ -42,7 +42,7 @@ const upload = multer({
 });
 
 router.post('/', verificarToken, ticketController.createTicket);
-router.get('/', ticketController.getTickets);
+router.get('/', verificarToken, ticketController.getTickets);
 router.get('/status-options', ticketController.getStatusOptions);
 router.get('/filters', ticketController.handler);
 router.get('/:id', ticketController.getTicketById);

@@ -17,6 +17,10 @@ const formatDate24h = (date) => {
 // Whitelist de ordenamiento -> mapea a columnas reales
 const SORT_MAP = new Set(["created_at", "updated_at", "id", "status_id", "priority"]);
 
+// controllers/ticketController.js
+// GET /api/tickets
+// controllers/tickets.js
+// controllers/tickets.js
 async function getTickets(req, res) {
   try {
     const page  = Math.max(parseInt(req.query.page) || 1, 1);
@@ -37,57 +41,96 @@ async function getTickets(req, res) {
       sortBy = "created_at",
       order  = "desc",
       latest,
+      triage, // ← NUEVO
     } = req.query;
 
-    // ✅ define latestMode (evita ReferenceError)
+    const roleId = req.user?.role_id ?? null;
+    const userId = req.user?.id ?? null;
+
     const latestMode =
       String(latest || "").toLowerCase() === "1" ||
       String(latest || "").toLowerCase() === "true";
 
+    const triageMode =
+      String(triage || "").toLowerCase() === "1" ||
+      String(triage || "").toLowerCase() === "true";
+
     order = order?.toLowerCase() === "asc" ? "asc" : "desc";
     if (!["created_at","updated_at","id"].includes(sortBy)) sortBy = "created_at";
 
-    // ✅ parseo simple de priority (minúsculas)
     const pr = typeof priority === "string" ? priority.toUpperCase() : undefined;
 
-const where = {
-  deleted_at: null,
-  ...(statusId ?        { status_id: Number(statusId) } : {}),
-  ...(pr ?              { priority: pr } : {}),                 // 👈 aquí
-  ...(categoryId ?      { category_service_id: Number(categoryId) } : {}),
-  ...(officeId ?        { office_id: Number(officeId) } : {}),
-  ...(officeSupportToId ? { office_support_to: Number(officeSupportToId) } : {}),
-  ...(departmentId ?    { department_id: Number(departmentId) } : {}),
-  ...(technicianId ?    { assigned_user_id: Number(technicianId) } : {}),
-  ...((dateFrom || dateTo) && {
-    created_at: {
-      ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00`) } : {}),
-      ...(dateTo   ? { lte: new Date(`${dateTo}T23:59:59.999`) } : {}),
-    },
-  }),
-  ...(q && {
-    OR: [
-      { subject: { contains: q } },
-      ...(Number.isNaN(Number(q)) ? [] : [{ id: Number(q) }]),
-    ],
-  }),
-};
+    // WHERE base
+    const where = {
+      deleted_at: null,
+      ...(statusId ?        { status_id: Number(statusId) } : {}),
+      ...(pr ?              { priority: pr } : {}),
+      ...(categoryId ?      { category_service_id: Number(categoryId) } : {}),
+      ...(officeId ?        { office_id: Number(officeId) } : {}),
+      ...(officeSupportToId ? { office_support_to: Number(officeSupportToId) } : {}),
+      ...(departmentId ?    { department_id: Number(departmentId) } : {}),
+      ...(technicianId ?    { assigned_user_id: Number(technicianId) } : {}),
+      ...((dateFrom || dateTo) && {
+        created_at: {
+          ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00`) } : {}),
+          ...(dateTo   ? { lte: new Date(`${dateTo}T23:59:59.999`) } : {}),
+        },
+      }),
+      ...(q && {
+        OR: [
+          { subject: { contains: q } },
+          ...(Number.isNaN(Number(q)) ? [] : [{ id: Number(q) }]),
+        ],
+      }),
+    };
 
-    // Relaciones que necesitamos (incluye creador)
+    // Reglas por rol
+    if (triageMode) {
+      if (![1,5].includes(roleId)) {
+        return res.status(403).json({ success:false, error:"No autorizado para triage" });
+      }
+      // TRIAGE: falta categoría O falta técnico
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { category_service_id: { equals: null } },
+            { category_service_id: 0 },
+            { assigned_user_id:    { equals: null } },
+            { assigned_user_id: 0 },
+          ],
+        },
+      ];
+    } else {
+      if (roleId === 4) {
+        // Técnico: solo sus tickets
+        where.AND = [
+          ...(where.AND || []),
+          { assigned_user_id: userId },
+        ];
+      } else if (![1,5].includes(roleId)) {
+        // Otros roles: sólo tickets ya categorizados y asignados
+        where.AND = [
+          ...(where.AND || []),
+          { category_service_id: { gt: 0 } },
+          { assigned_user_id:    { gt: 0 } },
+        ];
+      }
+    }
+
     const include = {
       ticket_status: { select: { id: true, name: true } },
       category_services: { select: { id: true, name: true } },
       departments: { select: { id: true, name: true } },
-      offices_tickets_office_idTooffices: { select: { id: true, name: true } },                // oficina (si aún la usas en algún lado)
+      offices_tickets_office_idTooffices: { select: { id: true, name: true } },
       offices_tickets_office_support_toTooffices: { select: { id: true, name: true } },
       users_tickets_assigned_user_idTousers: { select: { id: true, first_name: true, last_name: true } },
-      users_tickets_user_idTousers: { select: { id: true, first_name: true, last_name: true } }, // 👈 creador del ticket
+      users_tickets_user_idTousers: { select: { id: true, first_name: true, last_name: true } },
     };
 
     let totalItems, rows;
 
     if (latestMode) {
-      // Subconjunto: últimos 100 (ajusta si quieres 200)
       const topIds = await prisma.tickets.findMany({
         where,
         select: { id: true },
@@ -121,7 +164,11 @@ const where = {
 
     const data = rows.map((t) => {
       const tech    = t.users_tickets_assigned_user_idTousers;
-      const creator = t.users_tickets_user_idTousers; // 👈 creador
+      const creator = t.users_tickets_user_idTousers;
+
+      const needsCategory = (t.category_service_id == null || t.category_service_id === 0);
+      const needsAssignee = (t.assigned_user_id   == null || t.assigned_user_id   === 0);
+
       return {
         id: `#${t.id}`,
         rawId: t.id,
@@ -132,28 +179,30 @@ const where = {
         assigneeInitials: tech ? `${(tech.first_name?.[0]||"").toUpperCase()}${(tech.last_name?.[0]||"").toUpperCase()}` : "NA",
         category: t.category_services?.name ?? "—",
         department: t.departments?.name ?? "—",
-        // branch: t.offices_tickets_office_idTooffices?.name ?? "—", // ← si ya NO quieres la oficina, puedes eliminar esta línea
-        createdBy: creator ? `${creator.first_name} ${creator.last_name}` : "—", // 👈 NUEVO CAMPO
+        createdBy: creator ? `${creator.first_name} ${creator.last_name}` : "—",
         supportOffice: t.offices_tickets_office_support_toTooffices?.name ?? "—",
         created: t.created_at ? new Date(t.created_at).toISOString().slice(0,10) : null,
         updatedAt: t.updated_at,
+        needsCategory,
+        needsAssignee,
       };
     });
 
     res.json({
+      success: true,
       data,
       page,
       limit,
       totalItems,
       totalPages: Math.max(Math.ceil(totalItems / limit), 1),
       latest: latestMode,
+      triage: triageMode,
     });
   } catch (err) {
     console.error("getTickets error:", err);
-    res.status(500).json({ error: "Error obteniendo tickets" });
+    res.status(500).json({ success:false, error: "Error obteniendo tickets" });
   }
 }
-
 
 
 
@@ -551,26 +600,75 @@ async function getTicketsByAssignedUserId(req, res) {
   }
 }
 
+// controllers/tickets.js
 async function updateTicket(req, res) {
   try {
-    const { id } = req.params;
-    const { subject, comment, status_id, assigned_user_id } = req.body;
+    const id = Number(req.params.id);
+    const userId = req.user?.id || null;
+    const { subject, comment, status_id, assigned_user_id, category_service_id } = req.body;
 
-    const data = {
-      ...(subject !== undefined ? { subject } : {}),
-      ...(comment !== undefined ? { comment } : {}),
-      ...(status_id !== undefined ? { status_id: Number(status_id) } : {}),
-      ...(assigned_user_id !== undefined ? { assigned_user_id: Number(assigned_user_id) } : {}),
-      updated_at: new Date(),
-    };
+    const prev = await prisma.tickets.findUnique({ where: { id } });
+    if (!prev) return res.status(404).json({ success:false, error:"Ticket no encontrado" });
 
-    const ticket = await prisma.tickets.update({ where: { id: Number(id) }, data });
-    res.json({ success: true, message: "Ticket actualizado correctamente", data: ticket });
+    const newStatus = status_id !== undefined ? Number(status_id) : undefined;
+    const statusChanged = newStatus !== undefined && newStatus !== prev.status_id;
+
+    const updated = await prisma.tickets.update({
+      where: { id },
+      data: {
+        ...(subject !== undefined ? { subject } : {}),
+        ...(comment !== undefined ? { comment } : {}),
+        ...(newStatus !== undefined ? { status_id: newStatus } : {}),
+        ...(assigned_user_id !== undefined ? { assigned_user_id: Number(assigned_user_id) || null } : {}),
+        ...(category_service_id !== undefined ? { category_service_id: Number(category_service_id) || null } : {}),
+        updated_at: new Date(),
+      },
+      include: {
+        ticket_status: { select: { id:true, name:true } },
+        category_services: { select: { id:true, name:true } },
+        users_tickets_assigned_user_idTousers: { select: { id:true, first_name:true, last_name:true } },
+      }
+    });
+
+    if (statusChanged) {
+      await prisma.ticket_histories.create({
+        data: {
+          ticket_id: id,
+          status_id: newStatus,
+          user_id: userId,
+          created_at: new Date(),
+        },
+      });
+    }
+
+    const assigneeName = updated.users_tickets_assigned_user_idTousers
+      ? `${updated.users_tickets_assigned_user_idTousers.first_name} ${updated.users_tickets_assigned_user_idTousers.last_name}`
+      : null;
+
+    const categoryName = updated.category_services?.name ?? null;
+
+    const needsCategory = (updated.category_service_id == null || updated.category_service_id === 0);
+    const needsAssignee = (updated.assigned_user_id   == null || updated.assigned_user_id   === 0);
+
+    res.json({
+      success:true,
+      message:"Ticket actualizado correctamente",
+      data: {
+        ...updated,
+        assigned_user_name: assigneeName,
+        category_name: categoryName,
+        needsCategory,
+        needsAssignee,
+      }
+    });
   } catch (e) {
     console.error("Error en updateTicket:", e);
-    res.status(500).json({ success: false, error: "Error al actualizar ticket" });
+    res.status(500).json({ success:false, error:"Error al actualizar ticket" });
   }
 }
+
+
+
 
 async function deleteTicket(req, res) {
   try {
