@@ -1,12 +1,12 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client" // Ubicación estándar recomendada
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
-  relationMode = "prisma"  
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
 }
 
 model SequelizeMeta {
@@ -39,6 +39,7 @@ model category_services {
   deleted_at DateTime? @db.Timestamp(0)
   created_at DateTime? @db.Timestamp(0)
   updated_at DateTime? @db.Timestamp(0)
+  active     Boolean   @default(true)
   faqs       faqs[]
   tickets    tickets[]
 }
@@ -337,7 +338,7 @@ model permissions {
   id              Int                @id @default(autoincrement()) @db.UnsignedInt
   name            String?            @db.VarChar(255)
   description     String             @db.VarChar(255)
-  status          permissions_status @default(Activado)
+  status          permissions_status @default(Pendiente)
   deleted_at      DateTime?          @db.Timestamp(0)
   created_at      DateTime?          @db.Timestamp(0)
   updated_at      DateTime?          @db.Timestamp(0)
@@ -671,7 +672,7 @@ model users {
   last_name                                                                               String                          @db.VarChar(255)
   email                                                                                   String                          @unique(map: "users_email_unique") @db.VarChar(255)
   password                                                                                String                          @db.VarChar(60)
-  activated                                                                               users_activated                 @default(dbgenerated("1"))
+  activated                                                                               users_activated                 @default(inactive)
   role_id                                                                                 Int                             @db.UnsignedInt
   office_id                                                                               Int                             @db.UnsignedInt
   department_id                                                                           Int                             @db.UnsignedInt
@@ -735,10 +736,9 @@ enum ticket_tasks_status_id {
 }
 
 enum users_activated {
-  active @map("1")
+  active   @map("1")
   inactive @map("0")
 }
-
 
 enum tickets_priority {
   Baja

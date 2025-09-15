@@ -3,6 +3,9 @@ const prisma = require("../db");
 const { Prisma } = require("@prisma/client");
 const path = require("path");
 
+// arriba del todo
+const stripHtml = (s = "") => String(s).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+
 // util
 const initialsOf = (f = "", l = "") =>
   `${(f?.[0] || "").toUpperCase()}${(l?.[0] || "").toUpperCase()}`;
@@ -21,6 +24,8 @@ const SORT_MAP = new Set(["created_at", "updated_at", "id", "status_id", "priori
 // GET /api/tickets
 // controllers/tickets.js
 // controllers/tickets.js
+// controllers/ticketController.js
+// controllers/ticketController.js
 async function getTickets(req, res) {
   try {
     const page  = Math.max(parseInt(req.query.page) || 1, 1);
@@ -41,11 +46,13 @@ async function getTickets(req, res) {
       sortBy = "created_at",
       order  = "desc",
       latest,
-      triage, // ← NUEVO
+      triage,
+      showClosed, // 0/1 o true/false → "Todos" cuando es true
     } = req.query;
 
-    const roleId = req.user?.role_id ?? null;
-    const userId = req.user?.id ?? null;
+    const roleId = Number(req.user?.role_id ?? 0);
+    const userId = Number(req.user?.id ?? 0);
+    const isSupport = [4, 11].includes(roleId);
 
     const latestMode =
       String(latest || "").toLowerCase() === "1" ||
@@ -55,16 +62,37 @@ async function getTickets(req, res) {
       String(triage || "").toLowerCase() === "1" ||
       String(triage || "").toLowerCase() === "true";
 
-    order = order?.toLowerCase() === "asc" ? "asc" : "desc";
-    if (!["created_at","updated_at","id"].includes(sortBy)) sortBy = "created_at";
+    // Para soporte: por defecto NO mostrar cerrados/cancelados; para otros: por defecto mostrar todo
+    const showClosedParam =
+      String(showClosed || "").toLowerCase() === "1" ||
+      String(showClosed || "").toLowerCase() === "true";
+    const showClosedMode = isSupport ? showClosedParam : true;
 
-    const pr = typeof priority === "string" ? priority.toUpperCase() : undefined;
+    order = order?.toLowerCase() === "asc" ? "asc" : "desc";
+    if (!SORT_MAP.has(sortBy)) sortBy = "created_at"; // usa tu SORT_MAP
+
+    // 👇 PRIORIDAD: usar el normalizador para que coincida con el enum Prisma
+    const pr = normalizePriorityToEnum(priority); // "Baja" | "Media" | "Alta" | "Urgente" | null
+
+    // 👉 Descubrir IDs de estados a ocultar (cerrados/cancelados/anulados)
+    const allStatuses = await prisma.ticket_status.findMany({ select: { id: true, name: true } });
+    const norm = (s) => (s || "").trim().toLowerCase();
+    const hiddenStatusIds = allStatuses
+      .filter(s => {
+        const n = norm(s.name);
+        return (
+          n === "cerrado" || n === "closed" ||
+          n === "cancelado" || n === "cancelled" || n === "canceled" ||
+          n.includes("cancel") || n.includes("anulad")
+        );
+      })
+      .map(s => s.id);
 
     // WHERE base
     const where = {
       deleted_at: null,
       ...(statusId ?        { status_id: Number(statusId) } : {}),
-      ...(pr ?              { priority: pr } : {}),
+      ...(pr ?              { priority: pr } : {}), // 👈 aquí va el enum correcto
       ...(categoryId ?      { category_service_id: Number(categoryId) } : {}),
       ...(officeId ?        { office_id: Number(officeId) } : {}),
       ...(officeSupportToId ? { office_support_to: Number(officeSupportToId) } : {}),
@@ -101,22 +129,24 @@ async function getTickets(req, res) {
           ],
         },
       ];
-    } else {
-      if (roleId === 4) {
-        // Técnico: solo sus tickets
-        where.AND = [
-          ...(where.AND || []),
-          { assigned_user_id: userId },
-        ];
-      } else if (![1,5].includes(roleId)) {
-        // Otros roles: sólo tickets ya categorizados y asignados
-        where.AND = [
-          ...(where.AND || []),
-          { category_service_id: { gt: 0 } },
-          { assigned_user_id:    { gt: 0 } },
-        ];
-      }
+    } else if (isSupport) {
+      // SOPORTE (roles 4/11): SOLO sus tickets. Por defecto ocultar cerrados/cancelados.
+      where.AND = [
+        ...(where.AND || []),
+        { assigned_user_id: userId },
+        ...(showClosedMode || hiddenStatusIds.length === 0
+          ? []
+          : [{ status_id: { notIn: hiddenStatusIds } }]),
+      ];
+    } else if (![1,5].includes(roleId)) {
+      // Otros roles NO admin/supervisor: mostrar solo categorizados y asignados
+      where.AND = [
+        ...(where.AND || []),
+        { category_service_id: { gt: 0 } },
+        { assigned_user_id:    { gt: 0 } },
+      ];
     }
+    // Admin/Supervisor (1,5): sin restricción extra
 
     const include = {
       ticket_status: { select: { id: true, name: true } },
@@ -154,7 +184,7 @@ async function getTickets(req, res) {
           where,
           skip,
           take: limit,
-          orderBy: { [sortBy]: order },
+          orderBy: { [sortBy]: order }, // sortBy validado por SORT_MAP
           include,
         }),
       ]);
@@ -174,7 +204,7 @@ async function getTickets(req, res) {
         rawId: t.id,
         title: t.subject,
         status: t.ticket_status?.name ?? "Open",
-        priority: t.priority ?? "Medium",
+        priority: t.priority ?? "—", // 👈 no pongas "Medium" porque tu enum es español
         assignee: tech ? `${tech.first_name} ${tech.last_name}` : "Sin asignar",
         assigneeInitials: tech ? `${(tech.first_name?.[0]||"").toUpperCase()}${(tech.last_name?.[0]||"").toUpperCase()}` : "NA",
         category: t.category_services?.name ?? "—",
@@ -197,12 +227,17 @@ async function getTickets(req, res) {
       totalPages: Math.max(Math.ceil(totalItems / limit), 1),
       latest: latestMode,
       triage: triageMode,
+      meta: { roleId, isSupport, showClosedMode, hiddenStatusIds }, // opcional para debug
     });
   } catch (err) {
     console.error("getTickets error:", err);
     res.status(500).json({ success:false, error: "Error obteniendo tickets" });
   }
 }
+
+
+
+
 
 
 
@@ -340,9 +375,7 @@ async function getStatusOptions(req, res) {
 async function createTicket(req, res) {
   try {
     const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ success: false, error: "Usuario no autenticado" });
-    }
+    if (!userId) return res.status(401).json({ success: false, error: "Usuario no autenticado" });
 
     const {
       subject,
@@ -351,39 +384,38 @@ async function createTicket(req, res) {
       category_service_id = null,
       office_support_to = 1,
       assigned_user_id = null,
+      priority, // opcional
     } = req.body;
 
     if (!subject?.trim() || !comment?.trim()) {
       return res.status(400).json({ success: false, error: "subject y comment son obligatorios" });
     }
 
-    // 1) Tomar el department_id del usuario logueado
+    // department del usuario
     let departmentIdFromUser = req.user?.department_id;
-
-    // 2) Si el middleware no adjuntó el departamento, lo buscamos
     if (!departmentIdFromUser) {
-      const u = await prisma.users.findUnique({
-        where: { id: userId },
-        select: { department_id: true },
-      });
+      const u = await prisma.users.findUnique({ where: { id: userId }, select: { department_id: true } });
       departmentIdFromUser = u?.department_id;
     }
-
     if (!departmentIdFromUser) {
-      return res.status(400).json({
-        success: false,
-        error: "El usuario no tiene department_id configurado",
-      });
+      return res.status(400).json({ success: false, error: "El usuario no tiene department_id configurado" });
     }
+
+    // prioridad (elige UNA de estas dos líneas)
+    // 1) Sin default (la asigna luego el Asignador):
+    const prFinal = normalizePriorityToEnum(priority) || null;
+
+    // 2) Con default "Media":
+    // const prFinal = normalizePriorityToEnum(priority) || "Media";
 
     const ticket = await prisma.tickets.create({
       data: {
         subject: subject.trim(),
         comment: comment.trim(),
-        department_id: Number(departmentIdFromUser), // 👈 viene del usuario
+        department_id: Number(departmentIdFromUser),
         category_service_id: category_service_id ? Number(category_service_id) : null,
         user_id: userId,
-        priority: null,          // la prioridad no se envía al crear
+        priority: prFinal, // 👈 enum Prisma: "Baja" | "Media" | "Alta" | "Urgente" | null
         validated: null,
         office_support_to: Number(office_support_to) || 1,
         assigned_user_id: assigned_user_id ? Number(assigned_user_id) : null,
@@ -405,6 +437,7 @@ async function createTicket(req, res) {
 }
 
 
+
 // controllers/ticket.controller.js
 async function getTicketById(req, res) {
   try {
@@ -414,13 +447,15 @@ async function getTicketById(req, res) {
       return res.status(400).json({ success: false, error: "ID inválido" });
     }
 
-    // 1) Ticket base
-    const t = await prisma.tickets.findUnique({ where: { id: ticketId } });
-    if (!t) {
-      return res.status(404).json({ success: false, error: "Ticket no encontrado" });
-    }
+    // ⬇️ Trae también la categoría (y puedes traer status/users si quieres)
+    const t = await prisma.tickets.findUnique({
+      where: { id: ticketId },
+      include: {
+        category_services: { select: { id: true, name: true } }, // 👈 IMPORTANTE
+      },
+    });
+    if (!t) return res.status(404).json({ success: false, error: "Ticket no encontrado" });
 
-    // 2) Resolver nombres (estado, creador, asignado)
     const [status, createdByUser, assignedToUser] = await Promise.all([
       prisma.ticket_status.findUnique({
         where: { id: t.status_id ?? 0 },
@@ -436,7 +471,6 @@ async function getTicketById(req, res) {
       }),
     ]);
 
-    // 3) Oficina
     const officeIdCandidate = t.office_id ?? t.office_support_to ?? t.office_support_from ?? null;
     const office = officeIdCandidate
       ? await prisma.offices.findUnique({
@@ -445,7 +479,6 @@ async function getTicketById(req, res) {
         })
       : null;
 
-    // 4) Historial
     const rawHistories = await prisma.ticket_histories.findMany({
       where: { ticket_id: ticketId },
       orderBy: { created_at: "asc" },
@@ -489,7 +522,6 @@ async function getTicketById(req, res) {
       }];
     }
 
-    // 5) Adjuntos
     const uploadsRows = await prisma.ticket_uploads.findMany({
       where: { ticket_id: ticketId, deleted_at: null },
       select: { id: true, original_name: true, path: true, created_at: true },
@@ -504,8 +536,6 @@ async function getTicketById(req, res) {
       created_at: u.created_at,
     }));
 
-    // 6) Comentarios (⚠️ usa `comment` en vez de `content`)
-    //   No usamos `select` para evitar errores de nombres; mapeamos después.
     const rawComments = await prisma.ticket_comments.findMany({
       where: { ticket_id: ticketId, deleted_at: null },
       orderBy: { created_at: "asc" },
@@ -518,20 +548,17 @@ async function getTicketById(req, res) {
           select: { id: true, first_name: true, last_name: true },
         })
       : [];
-
     const commentUserMap = new Map(
       commentUsers.map(u => [u.id, `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim()])
     );
-
     const commentsOut = rawComments.map(c => ({
       id: c.id,
       user_name: commentUserMap.get(c.user_id) || "—",
-      content: c.comment ?? "",            // 👈 aquí va el texto del comentario
-      is_internal: Boolean(c.is_internal), // si no existe la columna, quedará `false`
+      content: c.comment ?? "",
+      is_internal: Boolean(c.is_internal),
       created_at: c.created_at ?? null,
     }));
 
-    // 7) Respuesta
     return res.json({
       success: true,
       data: {
@@ -543,6 +570,12 @@ async function getTicketById(req, res) {
         assigned_to: assignedToUser ? `${assignedToUser.first_name} ${assignedToUser.last_name}` : "No asignado",
         status_id: t.status_id,
         status: status?.name || "Desconocido",
+        priority: t.priority || null,
+
+        // ⬇️ DEVUELVE LA CATEGORÍA
+        category_service_id: t.category_service_id ?? null,
+        category_name: t.category_services?.name || null,
+
         office_name: office?.name || null,
         created_at: t.created_at,
         updated_at: t.updated_at,
@@ -561,6 +594,9 @@ async function getTicketById(req, res) {
     });
   }
 }
+
+
+
 
 
 
@@ -605,50 +641,76 @@ async function updateTicket(req, res) {
   try {
     const id = Number(req.params.id);
     const userId = req.user?.id || null;
-    const { subject, comment, status_id, assigned_user_id, category_service_id } = req.body;
+
+    const {
+      subject,
+      comment,
+      status_id,
+      assigned_user_id,
+      category_service_id,
+      priority, // 👈 nuevo
+    } = req.body;
 
     const prev = await prisma.tickets.findUnique({ where: { id } });
     if (!prev) return res.status(404).json({ success:false, error:"Ticket no encontrado" });
 
-    const newStatus = status_id !== undefined ? Number(status_id) : undefined;
-    const statusChanged = newStatus !== undefined && newStatus !== prev.status_id;
+    const newAssigned     = assigned_user_id    !== undefined ? (Number(assigned_user_id) || null) : undefined;
+    const newCategory     = category_service_id !== undefined ? (Number(category_service_id) || null) : undefined;
+    const explicitStatus  = status_id           !== undefined ? Number(status_id) : undefined;
 
-    const updated = await prisma.tickets.update({
-      where: { id },
-      data: {
-        ...(subject !== undefined ? { subject } : {}),
-        ...(comment !== undefined ? { comment } : {}),
-        ...(newStatus !== undefined ? { status_id: newStatus } : {}),
-        ...(assigned_user_id !== undefined ? { assigned_user_id: Number(assigned_user_id) || null } : {}),
-        ...(category_service_id !== undefined ? { category_service_id: Number(category_service_id) || null } : {}),
-        updated_at: new Date(),
-      },
-      include: {
-        ticket_status: { select: { id:true, name:true } },
-        category_services: { select: { id:true, name:true } },
-        users_tickets_assigned_user_idTousers: { select: { id:true, first_name:true, last_name:true } },
-      }
-    });
+    const assignedChanged = assigned_user_id !== undefined && newAssigned !== prev.assigned_user_id;
 
-    if (statusChanged) {
-      await prisma.ticket_histories.create({
-        data: {
-          ticket_id: id,
-          status_id: newStatus,
-          user_id: userId,
-          created_at: new Date(),
-        },
-      });
+    // prioridad (enum español)
+    const prFinal = priority !== undefined ? normalizePriorityToEnum(priority) : undefined;
+
+    // Forzar "Asignado" si se asigna técnico
+    let statusToSet = explicitStatus;
+    if (assignedChanged && newAssigned) {
+      const st = await prisma.ticket_status.findFirst({ where: { name: "Asignado" }, select: { id: true } });
+      if (st) statusToSet = st.id;
     }
+    const statusChanged = statusToSet !== undefined && statusToSet !== prev.status_id;
+
+    const ops = [
+      prisma.tickets.update({
+        where: { id },
+        data: {
+          ...(subject      !== undefined ? { subject } : {}),
+          ...(comment      !== undefined ? { comment } : {}),
+          ...(newCategory  !== undefined ? { category_service_id: newCategory } : {}),
+          ...(newAssigned  !== undefined ? { assigned_user_id: newAssigned } : {}),
+          ...(statusToSet  !== undefined ? { status_id: statusToSet } : {}),
+          ...(prFinal      !== undefined ? { priority: prFinal } : {}), // 👈 actualiza prioridad si vino
+          updated_at: new Date(),
+        },
+        include: {
+          ticket_status: { select: { id:true, name:true } },
+          category_services: { select: { id:true, name:true } },
+          users_tickets_assigned_user_idTousers: { select: { id:true, first_name:true, last_name:true } },
+        }
+      })
+    ];
+
+    if (statusChanged || (assignedChanged && newAssigned)) {
+      ops.push(
+        prisma.ticket_histories.create({
+          data: {
+            ticket_id: id,
+            status_id: statusToSet ?? prev.status_id ?? null,
+            user_id: userId,
+            created_at: new Date(),
+          },
+        })
+      );
+    }
+
+    const [updated] = await prisma.$transaction(ops);
 
     const assigneeName = updated.users_tickets_assigned_user_idTousers
       ? `${updated.users_tickets_assigned_user_idTousers.first_name} ${updated.users_tickets_assigned_user_idTousers.last_name}`
       : null;
 
     const categoryName = updated.category_services?.name ?? null;
-
-    const needsCategory = (updated.category_service_id == null || updated.category_service_id === 0);
-    const needsAssignee = (updated.assigned_user_id   == null || updated.assigned_user_id   === 0);
 
     res.json({
       success:true,
@@ -657,8 +719,8 @@ async function updateTicket(req, res) {
         ...updated,
         assigned_user_name: assigneeName,
         category_name: categoryName,
-        needsCategory,
-        needsAssignee,
+        needsCategory: (updated.category_service_id == null || updated.category_service_id === 0),
+        needsAssignee: (updated.assigned_user_id   == null || updated.assigned_user_id   === 0),
       }
     });
   } catch (e) {
@@ -666,6 +728,9 @@ async function updateTicket(req, res) {
     res.status(500).json({ success:false, error:"Error al actualizar ticket" });
   }
 }
+
+
+
 
 
 
@@ -681,14 +746,25 @@ async function deleteTicket(req, res) {
   }
 }
 
-function normalizePriority(p) {
-  if (!p) return undefined;
-  const n = p.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (n === "low" || n === "baja") return "low";
-  if (n === "medium" || n === "media") return "medium";
-  if (n === "high" || n === "alta") return "high";
-  if (n === "urgent" || n === "urgente") return "urgent";
+function normalizePriorityToEnum(input) {
+  if (!input || typeof input !== "string") return null;
+  const v = input.trim().toLowerCase();
+
+  // Español directo
+  if (v === "baja")     return "Baja";
+  if (v === "media")    return "Media";
+  if (v === "alta")     return "Alta";
+  if (v === "urgente")  return "Urgente";
+
+  // Inglés (por compatibilidad)
+  if (v === "low")      return "Baja";
+  if (v === "medium")   return "Media";
+  if (v === "high")     return "Alta";
+  if (v === "urgent")   return "Urgente";
+
+  return null;
 }
+
 
 
 // controllers/ticket.controller.js
@@ -864,6 +940,216 @@ async function addTicketComment(req, res) {
   }
 }
 
+// GET /api/tickets/triage-daily
+async function getTriageDailyTickets(req, res) {
+  try {
+    const page  = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 200);
+    const skip  = (page - 1) * limit;
+
+    let {
+      q,
+      statusId,
+      priority,
+      categoryId,
+      officeId,
+      technicianId,
+      date,        // opcional: YYYY-MM-DD -> si no viene, uso "hoy"
+      sortBy = "created_at",
+      order  = "desc",
+      showAll,     // 1/true: ver todos; 0/false (default): sólo hoy
+    } = req.query;
+
+    const showAllMode =
+      String(showAll || "").toLowerCase() === "1" ||
+      String(showAll || "").toLowerCase() === "true";
+
+    order = order?.toLowerCase() === "asc" ? "asc" : "desc";
+    if (!["created_at","updated_at","id"].includes(sortBy)) sortBy = "created_at";
+
+    // fecha: hoy por defecto (horario del servidor)
+    let start, end;
+    if (!showAllMode) {
+      if (date) {
+        start = new Date(`${date}T00:00:00`);
+        end   = new Date(`${date}T23:59:59.999`);
+      } else {
+        const now = new Date();
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        end   = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+      }
+    }
+
+    const where = {
+      deleted_at: null,
+      ...(statusId   ? { status_id: Number(statusId) } : {}),
+      ...(priority   ? { priority: priority } : {}), // tu enum: "Baja"|"Media"|"Alta"|"Urgente"
+      ...(categoryId ? { category_service_id: Number(categoryId) } : {}),
+      ...(officeId   ? { office_id: Number(officeId) } : {}),
+      ...(technicianId ? { assigned_user_id: Number(technicianId) } : {}),
+      ...(q && {
+        OR: [
+          { subject: { contains: q } },
+          ...(Number.isNaN(Number(q)) ? [] : [{ id: Number(q) }]),
+        ],
+      }),
+      ...(!showAllMode && { created_at: { gte: start, lt: end } }),
+    };
+
+    const include = {
+      ticket_status: { select: { id: true, name: true } },
+      category_services: { select: { id: true, name: true } },
+      users_tickets_assigned_user_idTousers: { select: { id: true, first_name: true, last_name: true } },
+      users_tickets_user_idTousers: { select: { id: true, first_name: true, last_name: true } },
+      offices_tickets_office_support_toTooffices: { select: { id: true, name: true } },
+      departments: { select: { id: true, name: true } },
+    };
+
+    const [totalItems, rows] = await Promise.all([
+      prisma.tickets.count({ where }),
+      prisma.tickets.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { [sortBy]: order },
+        include,
+      }),
+    ]);
+
+    const data = rows.map((t) => {
+      const tech    = t.users_tickets_assigned_user_idTousers;
+      const creator = t.users_tickets_user_idTousers;
+
+      const needsCategory = (t.category_service_id == null || t.category_service_id === 0);
+      const needsAssignee = (t.assigned_user_id   == null || t.assigned_user_id   === 0);
+
+      return {
+        id: `#${t.id}`,
+        rawId: t.id,
+        title: t.subject,
+        status: t.ticket_status?.name ?? "Open",
+        priority: t.priority ?? null, // "Baja"|"Media"|"Alta"|"Urgente"|null
+        assignee: tech ? `${tech.first_name} ${tech.last_name}` : "Sin asignar",
+        category: t.category_services?.name ?? "—",
+        department: t.departments?.name ?? "—",
+        createdBy: creator ? `${creator.first_name} ${creator.last_name}` : "—",
+        supportOffice: t.offices_tickets_office_support_toTooffices?.name ?? "—",
+        created: t.created_at ? new Date(t.created_at).toISOString().slice(0,10) : null,
+        needsCategory,
+        needsAssignee,
+      };
+    });
+
+    res.json({
+      success: true,
+      data,
+      page,
+      limit,
+      totalItems,
+      totalPages: Math.max(Math.ceil(totalItems / limit), 1),
+      showAll: showAllMode,
+    });
+  } catch (e) {
+    console.error("getTriageDailyTickets error:", e);
+    res.status(500).json({ success:false, error:"Error obteniendo tickets" });
+  }
+}
+
+// controllers/ticket.controller.js
+async function getPoolTickets(req, res) {
+  try {
+    const page  = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 200);
+    const skip  = (page - 1) * limit;
+
+    let { q, officeId, dateFrom, dateTo, sortBy = "created_at", order = "desc" } = req.query;
+
+    order = order?.toLowerCase() === "asc" ? "asc" : "desc";
+    if (!["created_at","updated_at","id"].includes(sortBy)) sortBy = "created_at";
+
+    // estados a ocultar
+    const allStatuses = await prisma.ticket_status.findMany({ select: { id: true, name: true } });
+    const norm = (s) => (s || "").trim().toLowerCase();
+    const hiddenStatusIds = allStatuses
+      .filter(s => {
+        const n = norm(s.name);
+        return n === "cerrado" || n === "closed" ||
+               n === "cancelado" || n === "cancelled" || n === "canceled" ||
+               n.includes("cancel") || n.includes("anulad");
+      })
+      .map(s => s.id);
+
+    const where = {
+      deleted_at: null,
+      assigned_user_id: null,                 // sin asignar
+      category_service_id: { not: null, gt: 0 }, // tiene categoría
+      status_id: hiddenStatusIds.length ? { notIn: hiddenStatusIds } : undefined, // estados visibles
+      // categoría activa (relación)
+      category_services: { is: { active: true } },
+      ...(officeId ? { office_id: Number(officeId) } : {}),
+      ...((dateFrom || dateTo) && {
+        created_at: {
+          ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00`) } : {}),
+          ...(dateTo   ? { lte: new Date(`${dateTo}T23:59:59.999`) } : {}),
+        },
+      }),
+      ...(q && {
+        OR: [
+          { subject: { contains: q } },
+          { comment: { contains: q } },
+          ...(Number.isNaN(Number(q)) ? [] : [{ id: Number(q) }]),
+        ],
+      }),
+    };
+
+    const include = {
+      ticket_status: { select: { id: true, name: true } },
+      category_services: { select: { id: true, name: true, active: true } },
+      users_tickets_user_idTousers: { select: { id: true, first_name: true, last_name: true } },
+      offices_tickets_office_support_toTooffices: { select: { id: true, name: true } },
+      departments: { select: { id: true, name: true } },
+    };
+
+    const [totalItems, rows] = await Promise.all([
+      prisma.tickets.count({ where }),
+      prisma.tickets.findMany({ where, skip, take: limit, orderBy: { [sortBy]: order }, include }),
+    ]);
+
+    const data = rows.map((t) => {
+      const creator = t.users_tickets_user_idTousers;
+      return {
+        id: `#${t.id}`,
+        rawId: t.id,
+        title: stripHtml(t.subject),                 // ← solo texto
+        description: stripHtml(t.comment || ""),     // ← solo texto
+        status: t.ticket_status?.name ?? "Open",
+        category: t.category_services?.name ?? "—",
+        categoryActive: Boolean(t.category_services?.active),
+        department: t.departments?.name ?? "—",
+        supportOffice: t.offices_tickets_office_support_toTooffices?.name ?? "—",
+        createdBy: creator ? `${creator.first_name} ${creator.last_name}` : "—",
+        created: t.created_at ? new Date(t.created_at).toISOString().slice(0, 10) : null,
+        priority: t.priority ?? null,
+      };
+    });
+
+    res.json({
+      success: true,
+      data,
+      page,
+      limit,
+      totalItems,
+      totalPages: Math.max(Math.ceil(totalItems / limit), 1),
+    });
+  } catch (e) {
+    console.error("getPoolTickets error:", e);
+    res.status(500).json({ success: false, error: "Error obteniendo pool de tickets" });
+  }
+}
+
+
+
+
 
 module.exports = {
   getTickets,
@@ -877,4 +1163,6 @@ module.exports = {
   handler,
   addAttachments,
   addTicketComment,
+  getTriageDailyTickets,
+  getPoolTickets,
 };

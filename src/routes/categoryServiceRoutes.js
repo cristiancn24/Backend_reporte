@@ -5,5 +5,6 @@ const verificarToken = require('../middlewares/auth');
 
 router.get('/', categoryServicesController.getAllCategoryServices);
 router.post('/', verificarToken, categoryServicesController.createCategoryService);
+router.patch('/:id', verificarToken, categoryServicesController.toggleActive);
 
 module.exports = router;

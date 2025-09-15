@@ -45,11 +45,14 @@ router.post('/', verificarToken, ticketController.createTicket);
 router.get('/', verificarToken, ticketController.getTickets);
 router.get('/status-options', ticketController.getStatusOptions);
 router.get('/filters', ticketController.handler);
+router.get('/triage-daily', verificarToken, ticketController.getTriageDailyTickets);
+router.get("/pool",verificarToken, ticketController.getPoolTickets);
 router.get('/:id', ticketController.getTicketById);
 router.get('/assigned/:userId', ticketController.getTicketsByAssignedUserId);
 router.patch('/:id', verificarToken, ticketController.updateTicket);
 router.delete('/:id', verificarToken, ticketController.deleteTicket);
 router.post('/:id/attachments', verificarToken, upload.array('files'), ticketController.addAttachments);
 router.post('/:id/comments', verificarToken, ticketController.addTicketComment);
+
 
 module.exports = router;
